@@ -56,7 +56,7 @@ Každý objekt musí mať:
 - "typ": "teoreticka_otazka" alebo "prakticka_uloha",
 - "otazka": zadanie otázky alebo úlohy,
 - "odpoved": správna odpoveď alebo referenčné riešenie, v prípade že je to praktická úloha na programovanie uveď aj kód,
-- "napoveda": krátka nápoveda pre študenta z učebného materiálu,
+- "napoveda": krátka pomocná stopa pre študenta, NESMIE obsahovať finálnu odpoveď ani kľúčový výsledok. Napoveda má len nasmerovať, čo si má študent v texte pozrieť alebo aký postup zvoliť.
 - "citovane_zdroje": zoznam čísel strán ako textových reťazcov, napr. ["12","13"].
 
 Výstup:

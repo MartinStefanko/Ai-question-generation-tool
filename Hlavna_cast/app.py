@@ -10,6 +10,24 @@ from outputs import save_learning_objects_json_txt, save_questions_json_txt, sav
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
+def to_list(value):
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(v).strip() for v in value if str(v).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def render_list(label, value):
+    values = to_list(value)
+    if values:
+        st.markdown(f"**{label}:**")
+        for item in values:
+            st.markdown(f"- {item}")
+    else:
+        st.markdown(f"**{label}:** -")
+
 st.set_page_config(layout="centered")
 
 st.title("Nástroj na automatické generovanie otázok a úloh")
@@ -144,20 +162,22 @@ with tab_lo:
     elif not st.session_state.get("los"):
         st.info("Vzdelávacie objekty zatiaľ nie sú vygenerované.")
     else:
-        st.write(f"Počet LO: {len(st.session_state.los)}")
+        st.subheader("Vzdelávacie objekty")
+        st.metric("Počet LO", len(st.session_state.los))
         for obj in st.session_state.los:
-            st.markdown("---")
-            st.write(f"ID: {obj.get('id')}")
-            st.write(f"Vzdelávací objekt: {obj.get('vzdelávací_objekt')}")
-            st.write(f"Bloom level: {obj.get('bloom_level')}")
-            acts = obj.get("odporúčané_aktivity")
-            st.write(f"Odporúčané aktivity: {acts}")
-            zad = obj.get("odporúčané_zadania")
-            st.write(f"Odporúčané zadania: {zad}")
-            pre = obj.get("prerekvizity")
-            st.write(f"Prerekvizity: {pre}")
-            cit = obj.get("citovane_zdroje")
-            st.write(f"Citované zdroje: {cit}")
+            lo_id = obj.get("id", "-")
+            lo_name = obj.get("vzdelávací_objekt", "Bez názvu")
+            bloom = obj.get("bloom_level", "-")
+
+            with st.expander(f"LO {lo_id}: {lo_name}", expanded=False):
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(f"**ID:** {lo_id}")
+                c2.markdown(f"**Bloom:** {bloom}")
+                c3.markdown(f"**Prerekvizity:** {', '.join(to_list(obj.get('prerekvizity'))) or '-'}")
+
+                render_list("Odporúčané aktivity", obj.get("odporúčané_aktivity"))
+                render_list("Odporúčané zadania", obj.get("odporúčané_zadania"))
+                st.markdown(f"**Citované zdroje:** {', '.join(to_list(obj.get('citovane_zdroje'))) or '-'}")
 
 
 with tab_otazky:
@@ -166,16 +186,26 @@ with tab_otazky:
     elif not st.session_state.get("items"):
         st.info("Otázky a úlohy zatiaľ nie sú vygenerované.")
     else:
-        st.write(f"Počet položiek: {len(st.session_state['items'])}")
+        st.subheader("Otázky a úlohy")
+        st.metric("Počet položiek", len(st.session_state["items"]))
         for it in st.session_state["items"]:
-            st.markdown("---")
-            st.write(f"ID: {it.get('id')}")
-            st.write(f"LO ID: {it.get('lo_id')}")
-            st.write(f"Typ: {it.get('typ')}")
-            st.write(f"Otázka/úloha: {it.get('otazka')}")
-            st.write(f"Odpoveď: {it.get('odpoved')}")
-            st.write(f"Nápoveda: {it.get('napoveda')}")
-            st.write(f"Citované zdroje: {it.get('citovane_zdroje')}")
+            item_id = it.get("id", "-")
+            lo_id = it.get("lo_id", "-")
+            typ = it.get("typ", "-")
+            otazka = it.get("otazka", "-")
+            title = f"{otazka}"
+
+            with st.expander(title, expanded=False):
+                #st.markdown(f"**Otázka / úloha:**\n\n{it.get('otazka', '-')}")
+                c1, c2, c3 = st.columns(3)
+                c1.markdown(f"**Typ:** {typ}")
+                c2.markdown(f"**Položka ID:** {item_id}")
+                c3.markdown(f"**LO ID:** {lo_id}")
+                with st.expander("Zobraziť odpoveď", expanded=False):
+                    render_list("Odpoveď", it.get("odpoved"))
+                with st.expander("Zobraziť nápovedu", expanded=False):
+                    render_list("Nápoveda", it.get("napoveda"))
+                st.markdown(f"**Citované zdroje:** {', '.join(to_list(it.get('citovane_zdroje'))) or '-'}")
 
 with tab_viz:
   
