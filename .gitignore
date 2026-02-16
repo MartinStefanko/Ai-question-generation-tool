@@ -17,7 +17,7 @@ Thumbs.db
 vystup/
 *.png
 *.json
-*.txt
+
 
 # Temp files
 *.tmp
