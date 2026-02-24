@@ -1,4 +1,4 @@
-import time
+﻿import time
 
 from json_load import safe_load_json
 from llm_client import generate_with_retry
@@ -63,6 +63,103 @@ Vyučovací materiál:
         for obj in parsed_seg:
             obj["id"] = next_id
             next_id += 1
+
+        missing = []
+        for obj in parsed_seg:
+            sources = obj.get("citovane_zdroje")
+            if sources is None:
+                missing.append(obj)
+                continue
+            if isinstance(sources, (list, tuple, set)):
+                if not any(str(v).strip() for v in sources):
+                    missing.append(obj)
+            elif not str(sources).strip():
+                missing.append(obj)
+
+        if missing:
+            parts_with_pages = []
+            for seg in batch:
+                page = seg.get("page")
+                text = seg.get("text", "")
+                parts_with_pages.append(f"[strana {page}]\n{text}")
+            batch_text_with_pages = "\n\n".join(parts_with_pages)
+
+            lo_summary = []
+            for obj in missing:
+                lo_summary.append(
+                    f"id: {obj.get('id')}, "
+                    f"vzdelavaci_objekt: {obj.get('vzdelávací_objekt', '')}, "
+                    f"bloom_level: {obj.get('bloom_level', '')}, "
+                    f"odporucane_zadania: {obj.get('odporúčané_zadania', '')}"
+                )
+            lo_summary_text = "\n".join(lo_summary)
+
+            prompt_missing = f"""
+                Si ucitel. Doplň pole citovane_zdroje pre nasledujuce LO, kde je prazdne. 
+                Pouzi iba strany, ktore su viditelne v texte so znacenkou [strana X].
+                Ak si nie si isty, vrat aspon najrelevantnejsiu jednu stranu. (štruktúra citovane_zdroje: 1, 2, 3 ...).
+
+                Vstupne LO:
+                {lo_summary_text}
+
+                Text materialu:
+                \"\"\"{batch_text_with_pages}\"\"\"
+
+                Vrat LEN validny JSON ako pole objektov:
+                [
+                    {{"id": 1, "citovane_zdroje": ["12","13"]}}
+                ]
+                """
+            try:
+                response_missing = generate_with_retry(prompt_missing, client=client, model=model, verbose=verbose)
+                parsed_missing = safe_load_json(response_missing.text if response_missing else "")
+                if isinstance(parsed_missing, dict):
+                    parsed_missing = [parsed_missing]
+            except Exception as e:
+                parsed_missing = []
+                if verbose:
+                    print(f"Doplnenie citovanych zdrojov zlyhalo: {e}")
+
+            src_map = {}
+            if isinstance(parsed_missing, list):
+                for row in parsed_missing:
+                    if not isinstance(row, dict):
+                        continue
+                    row_id = row.get("id")
+                    if row_id is None:
+                        continue
+
+                    raw_sources = row.get("citovane_zdroje")
+                    if isinstance(raw_sources, (list, tuple, set)):
+                        normalized = [str(v).strip() for v in raw_sources if str(v).strip()]
+                    elif raw_sources is None:
+                        normalized = []
+                    else:
+                        text = str(raw_sources).strip()
+                        if not text:
+                            normalized = []
+                        elif "," in text:
+                            normalized = [p.strip() for p in text.split(",") if p.strip()]
+                        else:
+                            normalized = [text]
+
+                    if normalized:
+                        src_map[row_id] = normalized
+
+            for obj in parsed_seg:
+                sources = obj.get("citovane_zdroje")
+                has_sources = False
+                if isinstance(sources, (list, tuple, set)):
+                    has_sources = any(str(v).strip() for v in sources)
+                elif sources is not None:
+                    has_sources = bool(str(sources).strip())
+
+                if not has_sources:
+                    filled = src_map.get(obj.get("id"))
+                    if filled:
+                        obj["citovane_zdroje"] = filled
+
+        for obj in parsed_seg:
             vsetky_lo.append(obj)
 
     end_total = time.perf_counter()
