@@ -10,6 +10,11 @@ from outputs import save_learning_objects_json_txt, save_questions_json_txt, sav
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
+LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
+LO_PREREQ_MODEL = "gemini-2.5-flash-lite"
+ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
+
 def to_list(value):
     if value is None:
         return []
@@ -106,7 +111,9 @@ with tab_dokument:
                 st.session_state.los = generate_lo_pipeline(
                     st.session_state.segments,
                     batch_size=20,
-                    verbose=False
+                    generation_model=LO_GENERATION_MODEL,
+                    prerequisites_model=LO_PREREQ_MODEL,
+                    verbose=True
                 )
             lo_time = time.perf_counter() - t1
 
@@ -128,7 +135,9 @@ with tab_dokument:
                         st.session_state.los,
                         st.session_state.segments,
                         batch_size=10,
-                        verbose=False
+                        generation_model=ITEM_GENERATION_MODEL,
+                        evaluation_model=ITEM_EVALUATION_MODEL,
+                        verbose=True
                     )
                 items_time = time.perf_counter() - t2
 
@@ -201,10 +210,20 @@ with tab_otazky:
                 c1.markdown(f"**Typ:** {typ}")
                 c2.markdown(f"**Položka ID:** {item_id}")
                 c3.markdown(f"**LO ID:** {lo_id}")
+                hodnotenie = it.get("hodnotenie", {})
+                if isinstance(hodnotenie, dict):
+                    skore = hodnotenie.get("skore")
+                    zdovodnenie = hodnotenie.get("zdovodnenie", "")
+                else:
+                    skore = it.get("hodnotenie_skore")
+                    zdovodnenie = it.get("hodnotenie_zdovodnenie", "")
+                st.markdown(f"**Hodnotenie:** {skore if skore is not None else '-'}")
+                
                 with st.expander("Zobraziť odpoveď", expanded=False):
                     render_list("Odpoveď", it.get("odpoved"))
                 with st.expander("Zobraziť nápovedu", expanded=False):
                     render_list("Nápoveda", it.get("napoveda"))
+                render_list("Zdôvodnenie hodnotenia", zdovodnenie)
                 st.markdown(f"**Citované zdroje:** {', '.join(to_list(it.get('citovane_zdroje'))) or '-'}")
 
 with tab_viz:

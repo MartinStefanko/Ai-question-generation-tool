@@ -63,6 +63,15 @@ def save_questions_json_txt(items, output_dir):
         items_txt_lines.append(f"otazka: {it.get('otazka')}")
         items_txt_lines.append(f"odpoved: {it.get('odpoved')}")
         items_txt_lines.append(f"napoveda: {it.get('napoveda')}")
+        hodnotenie = it.get("hodnotenie", {})
+        if isinstance(hodnotenie, dict):
+            skore = hodnotenie.get("skore")
+            zdovodnenie = hodnotenie.get("zdovodnenie", "")
+        else:
+            skore = it.get("hodnotenie_skore")
+            zdovodnenie = it.get("hodnotenie_zdovodnenie", "")
+        items_txt_lines.append(f"hodnotenie_skore: {'' if skore is None else skore}")
+        items_txt_lines.append(f"hodnotenie_zdovodnenie: {zdovodnenie}")
         cit = it.get("citovane_zdroje", [])
         if isinstance(cit, list):
             cit_str = ", ".join(str(c).strip() for c in cit if str(c).strip())

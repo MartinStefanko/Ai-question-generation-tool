@@ -87,7 +87,92 @@ LEN JSON pole bez akéhokoľvek ďalšieho textu.
     return items
 
 
-def generate_all_items(los, segmenty, batch_size=10, model="gemini-2.5-flash-lite", client=None, verbose=True, max_batch_attempts=3):
+def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None, verbose=True):
+    if not items_batch:
+        return {}
+
+    parts = []
+    for item in items_batch:
+        parts.append(
+            f"Item id: {item.get('id')}\n"
+            f"- lo_id: {item.get('lo_id')}\n"
+            f"- typ: {item.get('typ', '')}\n"
+            f"- otazka: {item.get('otazka', '')}\n"
+            f"- odpoved: {item.get('odpoved', '')}\n"
+            f"- napoveda: {item.get('napoveda', '')}\n"
+            f"- citovane_zdroje: {item.get('citovane_zdroje', [])}"
+        )
+    items_text = "\n\n".join(parts)
+
+    prompt = f"""
+Si učiteľ, ktorý hodnotí kvalitu vzdelávacích položiek.
+Pre každú položku priraď:
+- skore od 1 do 5 (1 = veľmi slabé, 5 = výborné)
+- krátke zdôvodnenie (1-2 vety)
+
+Hodnoť podľa:
+- vecnej správnosti,
+- jasnosti formulácie otázky/úlohy,
+- kvality odpovede,
+- vhodnosti nápovedy (nesmie prezrádzať finálne riešenie).
+
+Položky na hodnotenie:
+{items_text}
+
+Vráť LEN validný JSON ako pole objektov:
+[
+  {{"id": 123, "skore": 4, "zdovodnenie": "stručné zdôvodnenie"}}
+]
+
+Výstup:
+LEN JSON pole bez ďalšieho textu.
+"""
+
+    try:
+        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
+        parsed = safe_load_json(response.text if response else "")
+    except Exception as e:
+        if verbose:
+            print(f"Hodnotenie batchu položiek zlyhalo: {e}")
+        return {}
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return {}
+
+    evaluations = {}
+    for raw in parsed:
+        if not isinstance(raw, dict):
+            continue
+        item_id = raw.get("id")
+        if item_id is None:
+            continue
+        try:
+            score = int(raw.get("skore"))
+        except (TypeError, ValueError):
+            continue
+        score = max(1, min(5, score))
+        reason = str(raw.get("zdovodnenie", "")).strip()
+        evaluations[item_id] = {"skore": score, "zdovodnenie": reason}
+    return evaluations
+
+
+def generate_all_items(
+    los,
+    segmenty,
+    batch_size=10,
+    model="gemini-2.5-flash-lite",
+    generation_model=None,
+    evaluation_model=None,
+    client=None,
+    verbose=True,
+    max_batch_attempts=3,
+    max_eval_attempts=2
+):
+    generation_model = generation_model or model
+    evaluation_model = evaluation_model or model
+
     page_map = build_page_map(segmenty)
     all_items = []
     next_item_id = 1
@@ -106,7 +191,13 @@ def generate_all_items(los, segmenty, batch_size=10, model="gemini-2.5-flash-lit
 
         raw_items = []
         for attempt in range(1, max_batch_attempts + 1):
-            raw_items = generate_items_for_batch(batch, page_map, model=model, client=client, verbose=verbose)
+            raw_items = generate_items_for_batch(
+                batch,
+                page_map,
+                model=generation_model,
+                client=client,
+                verbose=verbose
+            )
             if raw_items:
                 break
             if verbose and max_batch_attempts > 1:
@@ -116,6 +207,7 @@ def generate_all_items(los, segmenty, batch_size=10, model="gemini-2.5-flash-lit
             if verbose:
                 print(f"Batch {batch_num}: LLM nevrátil žiadne položky.")
         else:
+            created_batch_items = []
             for raw in raw_items:
                 lo_id = raw.get("lo_id")
                 record = {
@@ -127,8 +219,29 @@ def generate_all_items(los, segmenty, batch_size=10, model="gemini-2.5-flash-lit
                     "napoveda": raw.get("napoveda", ""),
                     "citovane_zdroje": raw.get("citovane_zdroje", [])
                 }
+                created_batch_items.append(record)
                 all_items.append(record)
                 next_item_id += 1
+
+            batch_eval = {}
+            for attempt in range(1, max_eval_attempts + 1):
+                batch_eval = evaluate_items_batch(
+                    created_batch_items,
+                    model=evaluation_model,
+                    client=client,
+                    verbose=verbose
+                )
+                if batch_eval:
+                    break
+                if verbose and max_eval_attempts > 1:
+                    print(f"Batch {batch_num}: hodnotenie prazdne, opakujem ({attempt}/{max_eval_attempts})")
+
+            for record in created_batch_items:
+                item_eval = batch_eval.get(record["id"], {})
+                record["hodnotenie"] = {
+                    "skore": item_eval.get("skore"),
+                    "zdovodnenie": item_eval.get("zdovodnenie", "")
+                }
 
             if verbose:
                 print(f"Batch {batch_num}: vytvorených položiek: {len(raw_items)}")
