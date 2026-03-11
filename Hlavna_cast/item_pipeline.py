@@ -55,7 +55,7 @@ Každý objekt musí mať:
 - "lo_id": id vzdelávacieho objektu, ku ktorému položka patrí,
 - "typ": "teoreticka_otazka" alebo "prakticka_uloha",
 - "otazka": zadanie otázky alebo úlohy,
-- "odpoved": správna odpoveď alebo referenčné riešenie, v prípade že je to praktická úloha na programovanie uveď aj kód,
+- "odpoved": správna odpoveď alebo referenčné riešenie, v prípade že je to praktická úloha na programovanie uveď aj kód, ktorý sa dá spustiť,
 - "napoveda": krátka pomocná stopa pre študenta, NESMIE obsahovať finálnu odpoveď ani kľúčový výsledok. Napoveda má len nasmerovať, čo si má študent v texte pozrieť alebo aký postup zvoliť.
 - "citovane_zdroje": zoznam čísel strán ako textových reťazcov, napr. ["12","13"].
 
@@ -113,7 +113,7 @@ Pre každú položku priraď:
 Hodnoť podľa:
 - vecnej správnosti,
 - jasnosti formulácie otázky/úlohy,
-- kvality odpovede,
+- kvality odpovede (ak je to prakticka úloha, hodnoti aj kód a či sa dá spustiť),
 - vhodnosti nápovedy (nesmie prezrádzať finálne riešenie).
 
 Položky na hodnotenie:

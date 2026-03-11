@@ -10,10 +10,10 @@ from outputs import save_learning_objects_json_txt, save_questions_json_txt, sav
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
-LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
-LO_PREREQ_MODEL = "gemini-2.5-flash-lite"
-ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
-ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
+LO_GENERATION_MODEL = "gemini-2.5-flash"
+LO_PREREQ_MODEL = "gemini-2.5-flash"
+ITEM_GENERATION_MODEL = "gemini-2.5-flash"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
 
 def to_list(value):
     if value is None:
