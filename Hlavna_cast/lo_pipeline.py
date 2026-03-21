@@ -1,9 +1,10 @@
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
 from lo_generation import generate_learning_objects
-from outputs import save_lo_validation_report
+from outputs import save_document_topics_txt, save_lo_validation_report, save_topic_coverage_report
 from lo_validation import validate_learning_objects
 from prerequisites import infer_prerequisites
+from topic_coverage import analyze_topic_coverage
 
 
 def _lo_page_sort_key(lo):
@@ -36,6 +37,14 @@ def generate_lo_pipeline(
         empty_report = validate_learning_objects([], allowed_pages=[])
         if output_dir:
             save_lo_validation_report(empty_report, output_dir)
+            empty_coverage_report = analyze_topic_coverage(
+                segmenty,
+                [],
+                client=client,
+                verbose=verbose,
+            )
+            save_document_topics_txt(empty_coverage_report.get("topics", []), output_dir)
+            save_topic_coverage_report(empty_coverage_report, output_dir)
         return []
 
     los = cluster_by_core(los)
@@ -49,6 +58,14 @@ def generate_lo_pipeline(
     validation_report = validate_learning_objects(los, allowed_pages=allowed_pages)
     if output_dir:
         save_lo_validation_report(validation_report, output_dir)
+        coverage_report = analyze_topic_coverage(
+            segmenty,
+            los,
+            client=client,
+            verbose=verbose,
+        )
+        save_document_topics_txt(coverage_report.get("topics", []), output_dir)
+        save_topic_coverage_report(coverage_report, output_dir)
 
     if verbose:
         if validation_report["is_valid"]:

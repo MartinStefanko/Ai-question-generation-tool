@@ -88,6 +88,56 @@ def save_lo_validation_report(validation_report, output_dir):
     return report_txt_path
 
 
+def save_topic_coverage_report(coverage_report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    stats = coverage_report.get("stats", {})
+    topics = coverage_report.get("topics", [])
+
+    lines = [
+        f"topics_total: {stats.get('topics_total', 0)}",
+        f"topics_covered: {stats.get('topics_covered', 0)}",
+        f"coverage_percent: {stats.get('coverage_percent', 0.0)}",
+        f"similarity_threshold: {stats.get('similarity_threshold', 0.0)}",
+        "",
+        "TOPICS:",
+    ]
+
+    if topics:
+        for topic in topics:
+            lines.append(f"- tema: {topic.get('tema', '')}")
+            lines.append(f"  covered: {topic.get('covered', False)}")
+            lines.append(f"  similarity: {topic.get('similarity', 0.0)}")
+            lines.append(f"  best_lo_id: {topic.get('best_lo_id', '-')}")
+            lines.append(f"  best_lo_name: {topic.get('best_lo_name', '')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    report_txt_path = os.path.join(output_dir, "topic_coverage_report.txt")
+    with open(report_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_txt_path
+
+
+def save_document_topics_txt(topics, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    lines = []
+    if topics:
+        for idx, topic in enumerate(topics, start=1):
+            lines.append(f"{idx}. {topic.get('tema', '')}")
+    else:
+        lines.append("Ziadne temy neboli identifikovane.")
+
+    topics_txt_path = os.path.join(output_dir, "document_topics.txt")
+    with open(topics_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return topics_txt_path
+
+
 def save_questions_json_txt(items, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
