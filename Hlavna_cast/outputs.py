@@ -48,6 +48,46 @@ def save_learning_objects_json_txt(los, output_dir):
     return out_path, txt_path
 
 
+def save_lo_validation_report(validation_report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    stats = validation_report.get("stats", {})
+    errors = validation_report.get("errors", [])
+    warnings = validation_report.get("warnings", [])
+
+    lines = [
+        f"is_valid_json: {validation_report.get('is_valid_json')}",
+        f"is_valid: {validation_report.get('is_valid')}",
+        f"total: {stats.get('total', 0)}",
+        f"valid: {stats.get('valid', 0)}",
+        f"invalid: {stats.get('invalid', 0)}",
+        f"errors_count: {len(errors)}",
+        f"warnings_count: {len(warnings)}",
+        "",
+        "ERRORS:",
+    ]
+
+    if errors:
+        for error in errors:
+            lines.append(f"- {error}")
+    else:
+        lines.append("- none")
+
+    lines.append("")
+    lines.append("WARNINGS:")
+    if warnings:
+        for warning in warnings:
+            lines.append(f"- {warning}")
+    else:
+        lines.append("- none")
+
+    report_txt_path = os.path.join(output_dir, "learning_objects_validation_report.txt")
+    with open(report_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_txt_path
+
+
 def save_questions_json_txt(items, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 

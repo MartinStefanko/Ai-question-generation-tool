@@ -95,6 +95,14 @@ with tab_dokument:
         st.success(f"Nahraný súbor: {uploaded_file.name}")
 
         if st.button("Spustiť extrakciu textu", use_container_width=False):
+            st.session_state.los = None
+            st.session_state["items"] = None
+            st.session_state.lo_graph_path = None
+            st.session_state.lo_json_path = None
+            st.session_state.lo_txt_path = None
+            st.session_state.questions_json_path = None
+            st.session_state.questions_txt_path = None
+
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
                 f.write(uploaded_file.getbuffer())
                 st.session_state.pdf_path = f.name
@@ -108,13 +116,15 @@ with tab_dokument:
 
             t1 = time.perf_counter()
             with st.spinner("Generujem vzdelávacie objekty..."):
-                st.session_state.los = generate_lo_pipeline(
+                los = generate_lo_pipeline(
                     st.session_state.segments,
                     batch_size=20,
                     generation_model=LO_GENERATION_MODEL,
                     prerequisites_model=LO_PREREQ_MODEL,
+                    output_dir=OUTPUT_DIR,
                     verbose=True
                 )
+                st.session_state.los = los
             lo_time = time.perf_counter() - t1
 
             if st.session_state.los:

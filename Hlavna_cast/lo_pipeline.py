@@ -1,6 +1,8 @@
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
 from lo_generation import generate_learning_objects
+from outputs import save_lo_validation_report
+from lo_validation import validate_learning_objects
 from prerequisites import infer_prerequisites
 
 
@@ -16,6 +18,7 @@ def generate_lo_pipeline(
     model="gemini-2.5-flash-lite",
     generation_model=None,
     prerequisites_model=None,
+    output_dir=None,
     client=None,
     verbose=True
 ):
@@ -30,6 +33,9 @@ def generate_lo_pipeline(
         verbose=verbose
     )
     if not los:
+        empty_report = validate_learning_objects([], allowed_pages=[])
+        if output_dir:
+            save_lo_validation_report(empty_report, output_dir)
         return []
 
     los = cluster_by_core(los)
@@ -38,4 +44,20 @@ def generate_lo_pipeline(
         obj["id"] = i
 
     los = infer_prerequisites(los, model=prerequisites_model, client=client, verbose=verbose)
+
+    allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+    validation_report = validate_learning_objects(los, allowed_pages=allowed_pages)
+    if output_dir:
+        save_lo_validation_report(validation_report, output_dir)
+
+    if verbose:
+        if validation_report["is_valid"]:
+            print(f"Formalna validacia LO uspesna. Overenych LO: {validation_report['stats']['valid']}")
+        else:
+            print(
+                "Formalna validacia LO zlyhala. "
+                f"Pocet chyb: {len(validation_report['errors'])}"
+            )
+            for error in validation_report["errors"][:10]:
+                print(f"  - {error}")
     return los
