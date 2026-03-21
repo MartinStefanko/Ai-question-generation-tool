@@ -1,9 +1,17 @@
 import time
 
 from context_builder import build_page_map, build_context_for_lo, parse_pages
+from item_answerability import analyze_item_answerability
+from item_faithfulness import analyze_item_faithfulness
+from item_relevance_to_lo import analyze_item_relevance_to_lo
+from item_validation import validate_items
 from json_load import safe_load_json
 from llm_client import generate_with_retry
 from outputs import (
+    save_item_faithfulness_report,
+    save_item_answerability_report,
+    save_item_relevance_to_lo_report,
+    save_item_validation_report,
     save_python_code_correctness_report,
     save_python_code_runtime_report,
     save_python_code_syntax_report,
@@ -324,6 +332,35 @@ def generate_all_items(
         item["id"] = i
 
     if output_dir:
+        allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+        valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
+        item_validation_report = validate_items(
+            all_items,
+            allowed_pages=allowed_pages,
+            valid_lo_ids=valid_lo_ids,
+        )
+        save_item_validation_report(item_validation_report, output_dir)
+        item_relevance_report = analyze_item_relevance_to_lo(
+            all_items,
+            los,
+            client=client,
+            verbose=verbose,
+        )
+        save_item_relevance_to_lo_report(item_relevance_report, output_dir)
+        item_faithfulness_report = analyze_item_faithfulness(
+            segmenty,
+            all_items,
+            client=client,
+            verbose=verbose,
+        )
+        save_item_faithfulness_report(item_faithfulness_report, output_dir)
+        item_answerability_report = analyze_item_answerability(
+            segmenty,
+            all_items,
+            client=client,
+            verbose=verbose,
+        )
+        save_item_answerability_report(item_answerability_report, output_dir)
         syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
         save_python_code_syntax_report(syntax_report, output_dir)
         save_python_code_runtime_report(runtime_report, output_dir)
