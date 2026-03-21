@@ -3,9 +3,21 @@ import time
 from context_builder import build_page_map, build_context_for_lo, parse_pages
 from json_load import safe_load_json
 from llm_client import generate_with_retry
+from outputs import (
+    save_python_code_correctness_report,
+    save_python_code_runtime_report,
+    save_python_code_syntax_report,
+)
+from python_code_eval import evaluate_python_code_items
 
 
-def generate_items_for_batch(los_batch, page_map, model="gemini-2.5-flash-lite", client=None, verbose=True):
+def generate_items_for_batch(
+    los_batch,
+    page_map,
+    model="gemini-2.5-flash-lite",
+    client=None,
+    verbose=True
+):
     lo_blocks = []
     for lo in los_batch:
         lo_id = lo.get("id")
@@ -45,6 +57,31 @@ POŽIADAVKY:
 - NEvymýšľaj informácie, ktoré nie sú v texte.
 - Pre každú položku vždy uveď, ku ktorému LO patrí, pomocou poľa "lo_id".
 - Ak kontext neumožňuje žiadnu rozumnú položku, pre dané LO nevytváraj nič.
+- Testovateľné polia vypĺňaj len pre praktické úlohy v Pythone.
+- Zohľadni jazyk zdrojového dokumentu.
+- Ak je dokument o C++, Java, JavaScript, C# alebo inom jazyku, odpoveď a kód riešenia môžeš napísať v tomto jazyku.
+- Do Python testovacej schémy patria LEN úlohy, ktorých riešenie je v jazyku Python, ak je dokument v inom jazyku tak testovacie polia nevyplnuj.
+- Ak riešenie nie je v Pythone, nastav:
+  "execution_mode": "",
+  "function_name": "",
+  "automaticky_testovatelna": false,
+  "test_cases": []
+- Pole "automaticky_testovatelna" nastav na true len vtedy, ak sa úloha dá spoľahlivo overiť automaticky cez vstup/výstup alebo volanie funkcie.
+- Ak ide o GUI, interaktívnu, grafickú, webovú alebo inak netestovateľnú úlohu (napr. tkinter, pygame, turtle, streamlit), nastav "automaticky_testovatelna": false.
+- Ak úloha nie je programovacia alebo nie je vhodná na automatické testovanie, nastav:
+  "jazyk": "",
+  "kod_riesenia": "",
+  "execution_mode": "",
+  "function_name": "",
+  "test_cases": [],
+  "automaticky_testovatelna": false
+- Ak ide o praktickú úlohu s Python kódom, uveď spustiteľný kód v poli "kod_riesenia" a vytvor 2 až 4 test cases.
+- Pre Python praktické úlohy používaj len tieto execution_mode:
+  "stdin_stdout" alebo "function"
+- Ak použiješ "function", doplň aj rovnake  "function_name" ktore sa ma použiť.
+- Ak použiješ "function", "kod_riesenia" musí obsahovať len definície funkcií a prípadne importy alebo jednoduché konštanty.
+- Pri "function" NESMIE "kod_riesenia" obsahovať printy, demo volania funkcie, pevne vložené testovacie vstupy ani spúšťací kód mimo definície funkcie.
+- Pri "function" sa vstupy dodávajú len cez "test_cases".
 
 Zoznam LO:
 {los_text}
@@ -55,9 +92,19 @@ Každý objekt musí mať:
 - "lo_id": id vzdelávacieho objektu, ku ktorému položka patrí,
 - "typ": "teoreticka_otazka" alebo "prakticka_uloha",
 - "otazka": zadanie otázky alebo úlohy,
-- "odpoved": správna odpoveď alebo referenčné riešenie, v prípade že je to praktická úloha na programovanie uveď aj kód, ktorý sa dá spustiť,
+- "odpoved": správna odpoveď alebo referenčné riešenie; ak ide o praktickú Python úlohu, pole MUSÍ obsahovať aj samotný kód riešenia, aby si ho používateľ vedel skopírovať,
 - "napoveda": krátka pomocná stopa pre študenta, NESMIE obsahovať finálnu odpoveď ani kľúčový výsledok. Napoveda má len nasmerovať, čo si má študent v texte pozrieť alebo aký postup zvoliť.
 - "citovane_zdroje": zoznam čísel strán ako textových reťazcov, napr. ["12","13"].
+- "jazyk": napr. "python" alebo prázdny reťazec.
+- "kod_riesenia": samostatný kód bez markdown ohraničenia alebo prázdny reťazec.
+- "execution_mode": "stdin_stdout", "function" alebo prázdny reťazec.
+- "function_name": názov funkcie pre execution_mode "function", inak prázdny reťazec.
+- "automaticky_testovatelna": true alebo false.
+- "test_cases": pole objektov; pre Python úlohy:
+  - pri "stdin_stdout": {{"input": "...", "expected_output": "..."}}
+  - pri "function": {{"input": [...], "expected_output": ...}}
+  Inak prázdne pole [].
+- Pre praktickú Python úlohu musia byť "odpoved" a "kod_riesenia" obsahovo konzistentné; "odpoved" má obsahovať kód alebo kód spolu s krátkym vysvetlením.
 
 Výstup:
 LEN JSON pole bez akéhokoľvek ďalšieho textu.
@@ -83,7 +130,7 @@ LEN JSON pole bez akéhokoľvek ďalšieho textu.
             continue
         if "lo_id" not in item:
             continue
-        items.append(item)
+        items.append(_normalize_generated_item(item))
     return items
 
 
@@ -99,6 +146,11 @@ def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None
             f"- typ: {item.get('typ', '')}\n"
             f"- otazka: {item.get('otazka', '')}\n"
             f"- odpoved: {item.get('odpoved', '')}\n"
+            f"- jazyk: {item.get('jazyk', '')}\n"
+            f"- execution_mode: {item.get('execution_mode', '')}\n"
+            f"- function_name: {item.get('function_name', '')}\n"
+            f"- kod_riesenia: {item.get('kod_riesenia', '')}\n"
+            f"- test_cases: {item.get('test_cases', [])}\n"
             f"- napoveda: {item.get('napoveda', '')}\n"
             f"- citovane_zdroje: {item.get('citovane_zdroje', [])}"
         )
@@ -173,6 +225,7 @@ def generate_all_items(
     model="gemini-2.5-flash-lite",
     generation_model=None,
     evaluation_model=None,
+    output_dir=None,
     client=None,
     verbose=True,
     max_batch_attempts=3,
@@ -225,6 +278,12 @@ def generate_all_items(
                     "typ": raw.get("typ", ""),
                     "otazka": raw.get("otazka", ""),
                     "odpoved": raw.get("odpoved", ""),
+                    "jazyk": raw.get("jazyk", ""),
+                    "kod_riesenia": raw.get("kod_riesenia", ""),
+                    "execution_mode": raw.get("execution_mode", ""),
+                    "function_name": raw.get("function_name", ""),
+                    "automaticky_testovatelna": raw.get("automaticky_testovatelna", False),
+                    "test_cases": raw.get("test_cases", []),
                     "napoveda": raw.get("napoveda", ""),
                     "citovane_zdroje": raw.get("citovane_zdroje", [])
                 }
@@ -263,7 +322,156 @@ def generate_all_items(
     all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
     for i, item in enumerate(all_items, start=1):
         item["id"] = i
+
+    if output_dir:
+        syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
+        save_python_code_syntax_report(syntax_report, output_dir)
+        save_python_code_runtime_report(runtime_report, output_dir)
+        save_python_code_correctness_report(correctness_report, output_dir)
+
     if verbose:
         print(f"\nGenerovanie položiek pre všetky LO dokončené. Celkový počet položiek: {len(all_items)}")
         print(f"Celkový čas generovania položiek: {end_full - start_full:.2f} s")
     return all_items
+
+
+def _normalize_generated_item(item):
+    normalized = {
+        "lo_id": item.get("lo_id"),
+        "typ": str(item.get("typ", "")).strip(),
+        "otazka": str(item.get("otazka", "")).strip(),
+        "odpoved": item.get("odpoved", ""),
+        "napoveda": item.get("napoveda", ""),
+        "citovane_zdroje": _normalize_sources(item.get("citovane_zdroje", [])),
+        "jazyk": str(item.get("jazyk", "")).strip().lower(),
+        "kod_riesenia": str(item.get("kod_riesenia", "")).strip(),
+        "execution_mode": str(item.get("execution_mode", "")).strip(),
+        "function_name": str(item.get("function_name", "")).strip(),
+        "automaticky_testovatelna": bool(item.get("automaticky_testovatelna", False)),
+        "test_cases": _normalize_test_cases(item.get("test_cases", [])),
+    }
+
+    if normalized["typ"] != "prakticka_uloha":
+        normalized["jazyk"] = ""
+        normalized["kod_riesenia"] = ""
+        normalized["execution_mode"] = ""
+        normalized["function_name"] = ""
+        normalized["automaticky_testovatelna"] = False
+        normalized["test_cases"] = []
+        return normalized
+
+    if normalized["jazyk"] != "python":
+        normalized["kod_riesenia"] = normalized["kod_riesenia"] or ""
+        normalized["execution_mode"] = ""
+        normalized["function_name"] = ""
+        normalized["automaticky_testovatelna"] = False
+        normalized["test_cases"] = []
+        return normalized
+
+    if normalized["execution_mode"] not in {"stdin_stdout", "function"}:
+        normalized["execution_mode"] = ""
+    if normalized["execution_mode"] != "function":
+        normalized["function_name"] = ""
+    if (
+        not normalized["automaticky_testovatelna"]
+        or not normalized["execution_mode"]
+        or not normalized["test_cases"]
+        or _looks_non_testable_python_task(normalized)
+        or _has_invalid_function_mode_code(normalized)
+    ):
+        normalized["automaticky_testovatelna"] = False
+        normalized["execution_mode"] = ""
+        normalized["function_name"] = ""
+        normalized["test_cases"] = []
+    return normalized
+
+
+def _normalize_sources(value):
+    if isinstance(value, list):
+        return [str(v).strip() for v in value if str(v).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _normalize_test_cases(value):
+    if not isinstance(value, list):
+        return []
+
+    normalized = []
+    for row in value:
+        if not isinstance(row, dict):
+            continue
+        normalized.append({
+            "input": row.get("input", ""),
+            "expected_output": row.get("expected_output", ""),
+        })
+    return normalized
+
+
+def _looks_non_testable_python_task(item):
+    text = " ".join([
+        item.get("otazka", ""),
+        item.get("odpoved", "") if isinstance(item.get("odpoved", ""), str) else "",
+        item.get("kod_riesenia", ""),
+    ]).lower()
+    blocked_tokens = [
+        "import tkinter",
+        "from tkinter",
+        "customtkinter",
+        "import turtle",
+        "from turtle",
+        "import pygame",
+        "from pygame",
+        "import kivy",
+        "from kivy",
+        "pyqt",
+        "streamlit",
+        "flask",
+        "fastapi",
+        "web app",
+        "gui",
+        "graficke rozhranie",
+    ]
+    return any(token in text for token in blocked_tokens)
+
+
+def _has_invalid_function_mode_code(item):
+    if item.get("execution_mode") != "function":
+        return False
+
+    code = str(item.get("kod_riesenia", "")).strip()
+    function_name = str(item.get("function_name", "")).strip()
+    if not code or not function_name:
+        return True
+
+    try:
+        import ast
+        tree = ast.parse(code)
+    except SyntaxError:
+        return False
+
+    found_target_function = False
+    allowed_constant_values = (ast.Constant, ast.List, ast.Tuple, ast.Set, ast.Dict)
+
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name == function_name:
+                found_target_function = True
+            continue
+        if isinstance(node, ast.ClassDef):
+            continue
+        if isinstance(node, ast.Assign):
+            if isinstance(node.value, allowed_constant_values):
+                continue
+            return True
+        if isinstance(node, ast.AnnAssign):
+            if node.value is None or isinstance(node.value, allowed_constant_values):
+                continue
+            return True
+        if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue
+        return True
+
+    return not found_target_function

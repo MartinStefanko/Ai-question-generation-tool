@@ -48,6 +48,24 @@ def save_learning_objects_json_txt(los, output_dir):
     return out_path, txt_path
 
 
+def save_extracted_material_txt(segmenty, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    lines = []
+    for seg in segmenty:
+        page = seg.get("page", "-")
+        text = seg.get("text", "")
+        lines.append(f"=== STRANA {page} ===")
+        lines.append(str(text))
+        lines.append("")
+
+    txt_path = os.path.join(output_dir, "extracted_material.txt")
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return txt_path
+
+
 def save_lo_validation_report(validation_report, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -202,6 +220,111 @@ def save_lo_faithfulness_report(faithfulness_report, output_dir):
     return report_txt_path
 
 
+def save_python_code_syntax_report(report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    stats = report.get("stats", {})
+    items = report.get("items", [])
+
+    lines = [
+        f"items_total: {stats.get('items_total', 0)}",
+        f"python_practical_items: {stats.get('python_practical_items', 0)}",
+        f"auto_testable_items: {stats.get('auto_testable_items', 0)}",
+        f"tested_items: {stats.get('tested_items', 0)}",
+        f"syntax_valid_items: {stats.get('syntax_valid_items', 0)}",
+        f"syntax_valid_percent: {stats.get('syntax_valid_percent', 0.0)}",
+        "",
+        "PYTHON_CODE_SYNTAX:",
+    ]
+
+    if items:
+        for item in items:
+            lines.append(f"- item_id: {item.get('item_id', '-')}")
+            lines.append(f"  lo_id: {item.get('lo_id', '-')}")
+            lines.append(f"  execution_mode: {item.get('execution_mode', '')}")
+            lines.append(f"  syntax_valid: {item.get('syntax_valid', False)}")
+            lines.append(f"  error: {item.get('error', '')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    path = os.path.join(output_dir, "python_code_syntax_report.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+def save_python_code_runtime_report(report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    stats = report.get("stats", {})
+    items = report.get("items", [])
+
+    lines = [
+        f"items_total: {stats.get('items_total', 0)}",
+        f"python_practical_items: {stats.get('python_practical_items', 0)}",
+        f"auto_testable_items: {stats.get('auto_testable_items', 0)}",
+        f"tested_items: {stats.get('tested_items', 0)}",
+        f"runtime_valid_items: {stats.get('runtime_valid_items', 0)}",
+        f"runtime_valid_percent: {stats.get('runtime_valid_percent', 0.0)}",
+        "",
+        "PYTHON_CODE_RUNTIME:",
+    ]
+
+    if items:
+        for item in items:
+            lines.append(f"- item_id: {item.get('item_id', '-')}")
+            lines.append(f"  lo_id: {item.get('lo_id', '-')}")
+            lines.append(f"  execution_mode: {item.get('execution_mode', '')}")
+            lines.append(f"  runtime_valid: {item.get('runtime_valid', False)}")
+            lines.append(f"  timed_out: {item.get('timed_out', False)}")
+            lines.append(f"  error: {item.get('error', '')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    path = os.path.join(output_dir, "python_code_runtime_report.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
+def save_python_code_correctness_report(report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    stats = report.get("stats", {})
+    items = report.get("items", [])
+
+    lines = [
+        f"items_total: {stats.get('items_total', 0)}",
+        f"python_practical_items: {stats.get('python_practical_items', 0)}",
+        f"auto_testable_items: {stats.get('auto_testable_items', 0)}",
+        f"tested_items: {stats.get('tested_items', 0)}",
+        f"correct_items: {stats.get('correct_items', 0)}",
+        f"correct_items_percent: {stats.get('correct_items_percent', 0.0)}",
+        f"test_cases_total: {stats.get('test_cases_total', 0)}",
+        f"test_cases_passed: {stats.get('test_cases_passed', 0)}",
+        f"test_pass_rate_percent: {stats.get('test_pass_rate_percent', 0.0)}",
+        "",
+        "PYTHON_CODE_CORRECTNESS:",
+    ]
+
+    if items:
+        for item in items:
+            lines.append(f"- item_id: {item.get('item_id', '-')}")
+            lines.append(f"  lo_id: {item.get('lo_id', '-')}")
+            lines.append(f"  execution_mode: {item.get('execution_mode', '')}")
+            lines.append(f"  test_cases_total: {item.get('test_cases_total', 0)}")
+            lines.append(f"  test_cases_passed: {item.get('test_cases_passed', 0)}")
+            lines.append(f"  at_least_one_test_passed: {item.get('at_least_one_test_passed', False)}")
+            lines.append(f"  error: {item.get('error', '')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    path = os.path.join(output_dir, "python_code_correctness_report.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return path
+
+
 def save_questions_json_txt(items, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -216,6 +339,12 @@ def save_questions_json_txt(items, output_dir):
         items_txt_lines.append(f"typ: {it.get('typ')}")
         items_txt_lines.append(f"otazka: {it.get('otazka')}")
         items_txt_lines.append(f"odpoved: {it.get('odpoved')}")
+        items_txt_lines.append(f"jazyk: {it.get('jazyk', '')}")
+        items_txt_lines.append(f"execution_mode: {it.get('execution_mode', '')}")
+        items_txt_lines.append(f"function_name: {it.get('function_name', '')}")
+        items_txt_lines.append(f"automaticky_testovatelna: {it.get('automaticky_testovatelna', False)}")
+        items_txt_lines.append(f"kod_riesenia: {it.get('kod_riesenia', '')}")
+        items_txt_lines.append(f"test_cases: {it.get('test_cases', [])}")
         items_txt_lines.append(f"napoveda: {it.get('napoveda')}")
         hodnotenie = it.get("hodnotenie", {})
         if isinstance(hodnotenie, dict):

@@ -5,7 +5,11 @@ import time
 from text_extraction import pdf_to_text
 from lo_pipeline import generate_lo_pipeline
 from item_pipeline import generate_all_items
-from outputs import save_learning_objects_json_txt, save_questions_json_txt, save_lo_graph_png
+from outputs import ( save_extracted_material_txt,
+    save_learning_objects_json_txt,
+    save_questions_json_txt,
+    save_lo_graph_png,
+)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
@@ -111,6 +115,7 @@ with tab_dokument:
             with st.spinner("Spracovávam dokument..."):
                 st.session_state.segments = pdf_to_text(st.session_state.pdf_path)
             extraction_time = time.perf_counter() - t0
+            save_extracted_material_txt(st.session_state.segments, OUTPUT_DIR)
 
             st.success(f"Extrakcia dokončená. Čas extrakcie textu: {extraction_time:.2f} s")
 
@@ -147,6 +152,7 @@ with tab_dokument:
                         batch_size=10,
                         generation_model=ITEM_GENERATION_MODEL,
                         evaluation_model=ITEM_EVALUATION_MODEL,
+                        output_dir=OUTPUT_DIR,
                         verbose=True
                     )
                 items_time = time.perf_counter() - t2
