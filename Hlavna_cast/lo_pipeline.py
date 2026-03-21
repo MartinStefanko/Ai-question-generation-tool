@@ -1,6 +1,13 @@
+from context_builder import parse_pages
 from lo_clustering import cluster_by_core
 from lo_generation import generate_learning_objects
 from prerequisites import infer_prerequisites
+
+
+def _lo_page_sort_key(lo):
+    pages = parse_pages(lo.get("citovane_zdroje", []))
+    first_page = pages[0] if pages else float("inf")
+    return (first_page, lo.get("id", float("inf")))
 
 
 def generate_lo_pipeline(
@@ -26,6 +33,7 @@ def generate_lo_pipeline(
         return []
 
     los = cluster_by_core(los)
+    los.sort(key=_lo_page_sort_key)
     for i, obj in enumerate(los, start=1):
         obj["id"] = i
 

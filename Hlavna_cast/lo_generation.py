@@ -107,7 +107,7 @@ Vyučovací materiál:
 
                 Vrat LEN validny JSON ako pole objektov:
                 [
-                    {{"id": 1, "citovane_zdroje": ["12","13"]}}
+                    {{"id": 1, "citovane_zdroje": [12, 13]}}
                 ]
                 """
             try:

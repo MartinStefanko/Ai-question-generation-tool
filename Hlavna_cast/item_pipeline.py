@@ -1,6 +1,6 @@
 import time
 
-from context_builder import build_page_map, build_context_for_lo
+from context_builder import build_page_map, build_context_for_lo, parse_pages
 from json_load import safe_load_json
 from llm_client import generate_with_retry
 
@@ -158,6 +158,14 @@ LEN JSON pole bez ďalšieho textu.
     return evaluations
 
 
+def _item_sort_key(item, lo_order):
+    lo_id = item.get("lo_id")
+    lo_pos = lo_order.get(lo_id, float("inf"))
+    pages = parse_pages(item.get("citovane_zdroje", []))
+    first_page = pages[0] if pages else float("inf")
+    return (lo_pos, first_page, item.get("id", float("inf")))
+
+
 def generate_all_items(
     los,
     segmenty,
@@ -174,6 +182,7 @@ def generate_all_items(
     evaluation_model = evaluation_model or model
 
     page_map = build_page_map(segmenty)
+    lo_order = {lo.get("id"): idx for idx, lo in enumerate(los)}
     all_items = []
     next_item_id = 1
     total_los = len(los)
@@ -251,6 +260,9 @@ def generate_all_items(
             print(f"Batch {batch_num} hotový za {end_batch - start_batch:.2f} s")
         batch_num += 1
     end_full = time.perf_counter()
+    all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
+    for i, item in enumerate(all_items, start=1):
+        item["id"] = i
     if verbose:
         print(f"\nGenerovanie položiek pre všetky LO dokončené. Celkový počet položiek: {len(all_items)}")
         print(f"Celkový čas generovania položiek: {end_full - start_full:.2f} s")
