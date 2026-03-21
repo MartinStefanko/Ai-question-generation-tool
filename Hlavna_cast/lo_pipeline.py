@@ -1,7 +1,13 @@
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
 from lo_generation import generate_learning_objects
-from outputs import save_document_topics_txt, save_lo_validation_report, save_topic_coverage_report
+from lo_relevance_to_segment import analyze_lo_relevance_to_segment
+from outputs import (
+    save_document_topics_txt,
+    save_lo_relevance_to_segment_report,
+    save_lo_validation_report,
+    save_topic_coverage_report,
+)
 from lo_validation import validate_learning_objects
 from prerequisites import infer_prerequisites
 from topic_coverage import analyze_topic_coverage
@@ -45,6 +51,13 @@ def generate_lo_pipeline(
             )
             save_document_topics_txt(empty_coverage_report.get("topics", []), output_dir)
             save_topic_coverage_report(empty_coverage_report, output_dir)
+            empty_relevance_report = analyze_lo_relevance_to_segment(
+                segmenty,
+                [],
+                client=client,
+                verbose=verbose,
+            )
+            save_lo_relevance_to_segment_report(empty_relevance_report, output_dir)
         return []
 
     los = cluster_by_core(los)
@@ -66,6 +79,13 @@ def generate_lo_pipeline(
         )
         save_document_topics_txt(coverage_report.get("topics", []), output_dir)
         save_topic_coverage_report(coverage_report, output_dir)
+        relevance_report = analyze_lo_relevance_to_segment(
+            segmenty,
+            los,
+            client=client,
+            verbose=verbose,
+        )
+        save_lo_relevance_to_segment_report(relevance_report, output_dir)
 
     if verbose:
         if validation_report["is_valid"]:

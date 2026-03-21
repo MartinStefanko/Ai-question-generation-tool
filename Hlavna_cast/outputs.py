@@ -138,6 +138,38 @@ def save_document_topics_txt(topics, output_dir):
     return topics_txt_path
 
 
+def save_lo_relevance_to_segment_report(relevance_report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    stats = relevance_report.get("stats", {})
+    items = relevance_report.get("items", [])
+
+    lines = [
+        f"los_total: {stats.get('los_total', 0)}",
+        f"los_compared: {stats.get('los_compared', 0)}",
+        f"average_similarity: {stats.get('average_similarity', 0.0)}",
+        "",
+        "LO_RELEVANCE_TO_SEGMENT:",
+    ]
+
+    if items:
+        for item in items:
+            lines.append(f"- lo_id: {item.get('lo_id', '-')}")
+            lines.append(f"  lo_name: {item.get('lo_name', '')}")
+            lines.append(f"  has_source_text: {item.get('has_source_text', False)}")
+            lines.append(f"  source_pages: {item.get('source_pages', [])}")
+            lines.append(f"  similarity: {item.get('similarity', '-')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    report_txt_path = os.path.join(output_dir, "lo_relevance_to_segment_report.txt")
+    with open(report_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_txt_path
+
+
 def save_questions_json_txt(items, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
