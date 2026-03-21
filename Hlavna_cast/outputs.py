@@ -170,6 +170,38 @@ def save_lo_relevance_to_segment_report(relevance_report, output_dir):
     return report_txt_path
 
 
+def save_lo_faithfulness_report(faithfulness_report, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+
+    stats = faithfulness_report.get("stats", {})
+    items = faithfulness_report.get("items", [])
+
+    lines = [
+        f"los_total: {stats.get('los_total', 0)}",
+        f"los_evaluated: {stats.get('los_evaluated', 0)}",
+        f"average_faithfulness_score: {stats.get('average_faithfulness_score', 0.0)}",
+        "",
+        "LO_FAITHFULNESS:",
+    ]
+
+    if items:
+        for item in items:
+            lines.append(f"- lo_id: {item.get('lo_id', '-')}")
+            lines.append(f"  lo_name: {item.get('lo_name', '')}")
+            lines.append(f"  source_pages: {item.get('source_pages', [])}")
+            lines.append(f"  faithfulness_score: {item.get('faithfulness_score', '-')}")
+            lines.append(f"  reason: {item.get('reason', '')}")
+            lines.append("")
+    else:
+        lines.append("- none")
+
+    report_txt_path = os.path.join(output_dir, "lo_faithfulness_report.txt")
+    with open(report_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_txt_path
+
+
 def save_questions_json_txt(items, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 

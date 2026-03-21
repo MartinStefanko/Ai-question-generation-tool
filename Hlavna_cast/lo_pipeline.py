@@ -1,9 +1,11 @@
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
+from lo_faithfulness import analyze_lo_faithfulness
 from lo_generation import generate_learning_objects
 from lo_relevance_to_segment import analyze_lo_relevance_to_segment
 from outputs import (
     save_document_topics_txt,
+    save_lo_faithfulness_report,
     save_lo_relevance_to_segment_report,
     save_lo_validation_report,
     save_topic_coverage_report,
@@ -58,6 +60,13 @@ def generate_lo_pipeline(
                 verbose=verbose,
             )
             save_lo_relevance_to_segment_report(empty_relevance_report, output_dir)
+            empty_faithfulness_report = analyze_lo_faithfulness(
+                segmenty,
+                [],
+                client=client,
+                verbose=verbose,
+            )
+            save_lo_faithfulness_report(empty_faithfulness_report, output_dir)
         return []
 
     los = cluster_by_core(los)
@@ -86,6 +95,13 @@ def generate_lo_pipeline(
             verbose=verbose,
         )
         save_lo_relevance_to_segment_report(relevance_report, output_dir)
+        faithfulness_report = analyze_lo_faithfulness(
+            segmenty,
+            los,
+            client=client,
+            verbose=verbose,
+        )
+        save_lo_faithfulness_report(faithfulness_report, output_dir)
 
     if verbose:
         if validation_report["is_valid"]:
