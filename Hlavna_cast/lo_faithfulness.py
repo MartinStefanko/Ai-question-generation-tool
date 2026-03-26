@@ -6,7 +6,15 @@ from llm_client import generate_with_retry
 FAITHFULNESS_MODEL = "gemini-2.5-flash-lite"
 
 
-def analyze_lo_faithfulness(segmenty, los, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True):
+def analyze_lo_faithfulness(
+    segmenty,
+    los,
+    client=None,
+    model: str = FAITHFULNESS_MODEL,
+    verbose: bool = True,
+    batch_size: int = 20,
+    max_batch_attempts: int = 2,
+):
     report = {
         "stats": {
             "los_total": len(los),
@@ -21,9 +29,9 @@ def analyze_lo_faithfulness(segmenty, los, client=None, model: str = FAITHFULNES
 
     page_map = build_page_map(segmenty)
     scores = []
+    comparable_items = []
 
     for lo in los:
-        source_text = build_context_for_lo(lo, page_map, max_chars=8000)
         item = {
             "lo_id": lo.get("id"),
             "lo_name": lo.get("vzdelávací_objekt", ""),
@@ -31,26 +39,43 @@ def analyze_lo_faithfulness(segmenty, los, client=None, model: str = FAITHFULNES
             "faithfulness_score": None,
             "reason": "",
         }
+        report["items"].append(item)
 
+        source_text = build_context_for_lo(lo, page_map, max_chars=8000)
         if not source_text.strip():
-            report["items"].append(item)
             continue
 
-        lo_text = _lo_to_text(lo)
-        evaluation = _evaluate_lo_faithfulness(
-            lo_text,
-            source_text,
-            client=client,
-            model=model,
-            verbose=verbose,
-        )
-        if evaluation:
-            item["faithfulness_score"] = evaluation.get("skore")
-            item["reason"] = evaluation.get("zdovodnenie", "")
-            if isinstance(item["faithfulness_score"], int):
-                scores.append(item["faithfulness_score"])
+        comparable_items.append({
+            "row": item,
+            "lo_id": lo.get("id"),
+            "lo_text": _lo_to_text(lo),
+            "source_text": source_text,
+        })
 
-        report["items"].append(item)
+    for start in range(0, len(comparable_items), batch_size):
+        batch = comparable_items[start:start + batch_size]
+        evaluations = {}
+        for attempt in range(1, max_batch_attempts + 1):
+            evaluations = _evaluate_lo_faithfulness_batch(
+                batch,
+                client=client,
+                model=model,
+                verbose=verbose,
+            )
+            if evaluations:
+                break
+            if verbose and max_batch_attempts > 1:
+                print(f"LO faithfulness batch prazdny, opakujem ({attempt}/{max_batch_attempts})")
+
+        for item in batch:
+            evaluation = evaluations.get(item["lo_id"])
+            if not evaluation:
+                continue
+            row = item["row"]
+            row["faithfulness_score"] = evaluation.get("skore")
+            row["reason"] = evaluation.get("zdovodnenie", "")
+            if isinstance(row["faithfulness_score"], int):
+                scores.append(row["faithfulness_score"])
 
     report["stats"]["los_evaluated"] = len(scores)
     if scores:
@@ -58,22 +83,30 @@ def analyze_lo_faithfulness(segmenty, los, client=None, model: str = FAITHFULNES
     return report
 
 
-def _evaluate_lo_faithfulness(lo_text, source_text, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True):
+def _evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True):
+    parts = []
+    for item in batch:
+        parts.append(
+            f"LO ID: {item['lo_id']}\n"
+            f"LO:\n\"\"\"{item['lo_text']}\"\"\"\n\n"
+            f"Zdroj:\n\"\"\"{item['source_text']}\"\"\""
+        )
+    joined = "\n\n-----\n\n".join(parts)
+
     prompt = f"""
-Posud faithfulness LO voci zdroju.
-
-LO:
-\"\"\"{lo_text}\"\"\"
-
-Zdroj:
-\"\"\"{source_text}\"\"\"
+Posud faithfulness LO voci zdroju pre kazdy zaznam.
 
 Skore 1-5:
 1 = tvrdenia LO nie su podlozene zdrojom
 5 = LO je plne podlozene zdrojom
 
-Vrat LEN validny JSON:
-{{"skore": 1, "zdovodnenie": "kratke zdovodnenie"}}
+Zaznamy:
+{joined}
+
+Vrat LEN validny JSON ako pole objektov:
+[
+  {{"lo_id": 1, "skore": 1, "zdovodnenie": "kratke zdovodnenie"}}
+]
 """
 
     try:
@@ -84,17 +117,23 @@ Vrat LEN validny JSON:
             print(f"Faithfulness hodnotenie LO zlyhalo: {e}")
         return None
 
-    if not isinstance(parsed, dict):
-        return None
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return {}
 
-    try:
-        score = int(parsed.get("skore"))
-    except (TypeError, ValueError):
-        return None
-
-    score = max(1, min(5, score))
-    reason = str(parsed.get("zdovodnenie", "")).strip()
-    return {"skore": score, "zdovodnenie": reason}
+    evaluations = {}
+    for row in parsed:
+        if not isinstance(row, dict):
+            continue
+        lo_id = row.get("lo_id")
+        try:
+            score = int(row.get("skore"))
+        except (TypeError, ValueError):
+            continue
+        reason = str(row.get("zdovodnenie", "")).strip()
+        evaluations[lo_id] = {"skore": max(1, min(5, score)), "zdovodnenie": reason}
+    return evaluations
 
 
 def _lo_to_text(lo):

@@ -6,7 +6,15 @@ from llm_client import generate_with_retry
 ANSWERABILITY_MODEL = "gemini-2.5-flash-lite"
 
 
-def analyze_item_answerability(segmenty, items, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True):
+def analyze_item_answerability(
+    segmenty,
+    items,
+    client=None,
+    model: str = ANSWERABILITY_MODEL,
+    verbose: bool = True,
+    batch_size: int = 10,
+    max_batch_attempts: int = 2,
+):
     report = {
         "stats": {
             "items_total": len(items),
@@ -24,9 +32,9 @@ def analyze_item_answerability(segmenty, items, client=None, model: str = ANSWER
     page_map = build_page_map(segmenty)
     scores = []
     answerable_items = 0
+    comparable_items = []
 
     for item in items:
-        source_text = _build_context_for_item(item, page_map)
         row = {
             "item_id": item.get("id"),
             "lo_id": item.get("lo_id"),
@@ -35,20 +43,41 @@ def analyze_item_answerability(segmenty, items, client=None, model: str = ANSWER
             "answerable": False,
             "reason": "",
         }
+        report["items"].append(row)
 
+        source_text = _build_context_for_item(item, page_map)
         if not source_text.strip():
-            report["items"].append(row)
             continue
 
-        question_text = _question_to_text(item)
-        evaluation = _evaluate_item_answerability(
-            question_text,
-            source_text,
-            client=client,
-            model=model,
-            verbose=verbose,
-        )
-        if evaluation:
+        comparable_items.append({
+            "row": row,
+            "item_id": item.get("id"),
+            "question_text": _question_to_text(item),
+            "source_text": source_text,
+        })
+
+    for start in range(0, len(comparable_items), batch_size):
+        batch = comparable_items[start:start + batch_size]
+        evaluations = {}
+        for attempt in range(1, max_batch_attempts + 1):
+            evaluations = _evaluate_item_answerability_batch(
+                batch,
+                client=client,
+                model=model,
+                verbose=verbose,
+            )
+            if evaluations:
+                break
+            if verbose and max_batch_attempts > 1:
+                print(f"Item answerability batch prazdny, opakujem ({attempt}/{max_batch_attempts})")
+        if not isinstance(evaluations, dict):
+            evaluations = {}
+
+        for item in batch:
+            evaluation = evaluations.get(item["item_id"])
+            if not evaluation:
+                continue
+            row = item["row"]
             row["answerability_score"] = evaluation.get("skore")
             row["reason"] = evaluation.get("zdovodnenie", "")
             if isinstance(row["answerability_score"], int):
@@ -56,8 +85,6 @@ def analyze_item_answerability(segmenty, items, client=None, model: str = ANSWER
                 row["answerable"] = row["answerability_score"] >= 4
                 if row["answerable"]:
                     answerable_items += 1
-
-        report["items"].append(row)
 
     report["stats"]["items_evaluated"] = len(scores)
     if scores:
@@ -67,22 +94,30 @@ def analyze_item_answerability(segmenty, items, client=None, model: str = ANSWER
     return report
 
 
-def _evaluate_item_answerability(question_text, source_text, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True):
+def _evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True):
+    parts = []
+    for item in batch:
+        parts.append(
+            f"ITEM ID: {item['item_id']}\n"
+            f"Otazka:\n\"\"\"{item['question_text']}\"\"\"\n\n"
+            f"Zdroj:\n\"\"\"{item['source_text']}\"\"\""
+        )
+    joined = "\n\n-----\n\n".join(parts)
+
     prompt = f"""
-Posud answerability otazky voci zdroju.
-
-Otazka:
-\"\"\"{question_text}\"\"\"
-
-Zdroj:
-\"\"\"{source_text}\"\"\"
+Posud answerability otazky voci zdroju pre kazdy zaznam.
 
 Skore 1-5:
 1 = na otazku sa zo zdroja neda spolahlivo odpovedat
 5 = na otazku sa da zo zdroja jasne a jednoznacne odpovedat
 
-Vrat LEN validny JSON:
-{{"skore": 1, "zdovodnenie": "kratke zdovodnenie"}}
+Zaznamy:
+{joined}
+
+Vrat LEN validny JSON ako pole objektov:
+[
+  {{"item_id": 1, "skore": 1, "zdovodnenie": "kratke zdovodnenie"}}
+]
 """
 
     try:
@@ -93,17 +128,23 @@ Vrat LEN validny JSON:
             print(f"Answerability hodnotenie otazky zlyhalo: {e}")
         return None
 
-    if not isinstance(parsed, dict):
-        return None
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return {}
 
-    try:
-        score = int(parsed.get("skore"))
-    except (TypeError, ValueError):
-        return None
-
-    score = max(1, min(5, score))
-    reason = str(parsed.get("zdovodnenie", "")).strip()
-    return {"skore": score, "zdovodnenie": reason}
+    evaluations = {}
+    for row in parsed:
+        if not isinstance(row, dict):
+            continue
+        item_id = row.get("item_id")
+        try:
+            score = int(row.get("skore"))
+        except (TypeError, ValueError):
+            continue
+        reason = str(row.get("zdovodnenie", "")).strip()
+        evaluations[item_id] = {"skore": max(1, min(5, score)), "zdovodnenie": reason}
+    return evaluations
 
 
 def _question_to_text(item):

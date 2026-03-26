@@ -14,10 +14,11 @@ from outputs import ( save_extracted_material_txt,
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
-LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
+LO_GENERATION_MODEL = "gemini-2.5-flash"
 LO_PREREQ_MODEL = "gemini-2.5-flash" 
-ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
-ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
+ITEM_GENERATION_MODEL = "gemini-2.5-flash"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
+ITEM_EVALUATION_BATCH_SIZE = 20
 
 def to_list(value):
     if value is None:
@@ -90,6 +91,10 @@ if "questions_json_path" not in st.session_state:
     st.session_state.questions_json_path = None
 if "questions_txt_path" not in st.session_state:
     st.session_state.questions_txt_path = None
+if "lo_timing_report" not in st.session_state:
+    st.session_state.lo_timing_report = None
+if "item_timing_report" not in st.session_state:
+    st.session_state.item_timing_report = None
 
 with tab_dokument:
     st.write("Nahrajte PDF dokument, ktorý bude slúžiť ako vstupný učebný materiál.")
@@ -106,6 +111,8 @@ with tab_dokument:
             st.session_state.lo_txt_path = None
             st.session_state.questions_json_path = None
             st.session_state.questions_txt_path = None
+            st.session_state.lo_timing_report = None
+            st.session_state.item_timing_report = None
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
                 f.write(uploaded_file.getbuffer())
@@ -119,23 +126,24 @@ with tab_dokument:
 
             st.success(f"Extrakcia dokončená. Čas extrakcie textu: {extraction_time:.2f} s")
 
-            t1 = time.perf_counter()
             with st.spinner("Generujem vzdelávacie objekty..."):
-                los = generate_lo_pipeline(
+                los, lo_timing_report = generate_lo_pipeline(
                     st.session_state.segments,
-                    batch_size=20,
+                    batch_size=10,
                     generation_model=LO_GENERATION_MODEL,
                     prerequisites_model=LO_PREREQ_MODEL,
                     output_dir=OUTPUT_DIR,
-                    verbose=True
+                    verbose=True,
+                    return_metrics=True,
                 )
                 st.session_state.los = los
-            lo_time = time.perf_counter() - t1
+                st.session_state.lo_timing_report = lo_timing_report
 
             if st.session_state.los:
                 st.success(
                     f"Vzdelávacie objekty vygenerované: {len(st.session_state.los)}. "
-                    f"Čas generovania: {lo_time:.2f} s"
+                    f"Čas generovania: {lo_timing_report.get('generation_seconds', 0.0):.2f} s. "
+                    f"Čas evaluácie: {lo_timing_report.get('evaluation_seconds', 0.0):.2f} s"
                 )
                 lo_json_path, lo_txt_path = save_learning_objects_json_txt(st.session_state.los, OUTPUT_DIR)
                 st.session_state.lo_json_path = lo_json_path
@@ -144,23 +152,26 @@ with tab_dokument:
                 st.warning("Nepodarilo sa vygenerovať žiadne vzdelávacie objekty.")
 
             if st.session_state.los:
-                t2 = time.perf_counter()
                 with st.spinner("Generujem otázky a úlohy..."):
-                    st.session_state["items"] = generate_all_items(
+                    items, item_timing_report = generate_all_items(
                         st.session_state.los,
                         st.session_state.segments,
                         batch_size=10,
+                        evaluation_batch_size=ITEM_EVALUATION_BATCH_SIZE,
                         generation_model=ITEM_GENERATION_MODEL,
                         evaluation_model=ITEM_EVALUATION_MODEL,
                         output_dir=OUTPUT_DIR,
-                        verbose=True
+                        verbose=True,
+                        return_metrics=True,
                     )
-                items_time = time.perf_counter() - t2
+                    st.session_state["items"] = items
+                    st.session_state.item_timing_report = item_timing_report
 
                 if st.session_state["items"]:
                     st.success(
                         f"Otázky a úlohy vygenerované: {len(st.session_state['items'])}. "
-                        f"Čas generovania: {items_time:.2f} s"
+                        f"Čas generovania: {item_timing_report.get('generation_seconds', 0.0):.2f} s. "
+                        f"Čas evaluácie: {item_timing_report.get('evaluation_seconds', 0.0):.2f} s"
                     )
                     q_json_path, q_txt_path = save_questions_json_txt(st.session_state["items"], OUTPUT_DIR)
                     st.session_state.questions_json_path = q_json_path

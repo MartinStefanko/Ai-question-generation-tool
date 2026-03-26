@@ -11,6 +11,7 @@ from outputs import (
     save_item_faithfulness_report,
     save_item_answerability_report,
     save_item_relevance_to_lo_report,
+    save_processing_time_report,
     save_item_validation_report,
     save_python_code_correctness_report,
     save_python_code_runtime_report,
@@ -230,6 +231,7 @@ def generate_all_items(
     los,
     segmenty,
     batch_size=10,
+    evaluation_batch_size=20,
     model="gemini-2.5-flash-lite",
     generation_model=None,
     evaluation_model=None,
@@ -237,7 +239,8 @@ def generate_all_items(
     client=None,
     verbose=True,
     max_batch_attempts=3,
-    max_eval_attempts=2
+    max_eval_attempts=2,
+    return_metrics=False,
 ):
     generation_model = generation_model or model
     evaluation_model = evaluation_model or model
@@ -250,14 +253,17 @@ def generate_all_items(
 
     if verbose:
         print(f"Začínam generovanie položiek pre {total_los} LO v batchoch po {batch_size}.")
-    start_full = time.perf_counter()
+    generation_seconds = 0.0
+    evaluation_seconds = 0.0
     batch_num = 1
     for start in range(0, total_los, batch_size):
         batch = los[start:start + batch_size]
         lo_ids = [lo.get("id") for lo in batch]
         if verbose:
             print(f"\nBatch {batch_num}: LO id {lo_ids}")
-        start_batch = time.perf_counter()
+        start_batch_generation = time.perf_counter()
+        batch_generation_seconds = 0.0
+        batch_evaluation_seconds = 0.0
 
         raw_items = []
         for attempt in range(1, max_batch_attempts + 1):
@@ -299,6 +305,10 @@ def generate_all_items(
                 all_items.append(record)
                 next_item_id += 1
 
+            batch_generation_seconds = time.perf_counter() - start_batch_generation
+            generation_seconds += batch_generation_seconds
+
+            start_batch_evaluation = time.perf_counter()
             batch_eval = {}
             for attempt in range(1, max_eval_attempts + 1):
                 batch_eval = evaluate_items_batch(
@@ -318,20 +328,28 @@ def generate_all_items(
                     "skore": item_eval.get("skore"),
                     "zdovodnenie": item_eval.get("zdovodnenie", "")
                 }
+            batch_evaluation_seconds = time.perf_counter() - start_batch_evaluation
+            evaluation_seconds += batch_evaluation_seconds
 
             if verbose:
                 print(f"Batch {batch_num}: vytvorených položiek: {len(raw_items)}")
+        if not raw_items:
+            batch_generation_seconds = time.perf_counter() - start_batch_generation
+            generation_seconds += batch_generation_seconds
 
-        end_batch = time.perf_counter()
         if verbose:
-            print(f"Batch {batch_num} hotový za {end_batch - start_batch:.2f} s")
+            print(
+                f"Batch {batch_num} hotový. "
+                f"Generovanie: {batch_generation_seconds:.2f} s, "
+                f"evaluacia: {batch_evaluation_seconds:.2f} s"
+            )
         batch_num += 1
-    end_full = time.perf_counter()
     all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
     for i, item in enumerate(all_items, start=1):
         item["id"] = i
 
     if output_dir:
+        evaluation_start_reports = time.perf_counter()
         allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
         valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
         item_validation_report = validate_items(
@@ -352,6 +370,7 @@ def generate_all_items(
             all_items,
             client=client,
             verbose=verbose,
+            batch_size=evaluation_batch_size,
         )
         save_item_faithfulness_report(item_faithfulness_report, output_dir)
         item_answerability_report = analyze_item_answerability(
@@ -359,16 +378,34 @@ def generate_all_items(
             all_items,
             client=client,
             verbose=verbose,
+            batch_size=evaluation_batch_size,
         )
         save_item_answerability_report(item_answerability_report, output_dir)
         syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
         save_python_code_syntax_report(syntax_report, output_dir)
         save_python_code_runtime_report(runtime_report, output_dir)
         save_python_code_correctness_report(correctness_report, output_dir)
+        evaluation_seconds += time.perf_counter() - evaluation_start_reports
+
+    timing_report = {
+        "pipeline": "items",
+        "generation_seconds": round(generation_seconds, 4),
+        "evaluation_seconds": round(evaluation_seconds, 4),
+        "total_seconds": round(generation_seconds + evaluation_seconds, 4),
+        "details": {
+            "items_count": len(all_items),
+            "los_count": len(los),
+        },
+    }
+    if output_dir:
+        save_processing_time_report(timing_report, output_dir, "item_processing_time_report.txt")
 
     if verbose:
         print(f"\nGenerovanie položiek pre všetky LO dokončené. Celkový počet položiek: {len(all_items)}")
-        print(f"Celkový čas generovania položiek: {end_full - start_full:.2f} s")
+        print(f"Cas generovania položiek: {generation_seconds:.2f} s")
+        print(f"Cas evaluacie položiek: {evaluation_seconds:.2f} s")
+    if return_metrics:
+        return all_items, timing_report
     return all_items
 
 

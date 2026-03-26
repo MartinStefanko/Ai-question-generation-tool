@@ -66,6 +66,30 @@ def save_extracted_material_txt(segmenty, output_dir):
     return txt_path
 
 
+def save_processing_time_report(report, output_dir, filename):
+    os.makedirs(output_dir, exist_ok=True)
+
+    lines = [
+        f"pipeline: {report.get('pipeline', '')}",
+        f"generation_seconds: {report.get('generation_seconds', 0.0)}",
+        f"evaluation_seconds: {report.get('evaluation_seconds', 0.0)}",
+        f"total_seconds: {report.get('total_seconds', 0.0)}",
+    ]
+
+    details = report.get("details", {})
+    if details:
+        lines.append("")
+        lines.append("DETAILS:")
+        for key, value in details.items():
+            lines.append(f"- {key}: {value}")
+
+    report_txt_path = os.path.join(output_dir, filename)
+    with open(report_txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+    return report_txt_path
+
+
 def save_lo_validation_report(validation_report, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 

@@ -101,7 +101,12 @@ def validate_learning_objects(data, allowed_pages=None):
             )
             item_valid = False
 
-        if not _validate_non_empty_string_list(item.get("odporúčané_aktivity"), prefix, "odporúčané_aktivity", report):
+        if not _validate_non_empty_string_or_list(
+            item.get("odporúčané_aktivity"),
+            prefix,
+            "odporúčané_aktivity",
+            report
+        ):
             item_valid = False
 
         if not _validate_non_empty_string_or_list(
@@ -185,14 +190,23 @@ def _validate_non_empty_string_or_list(value, prefix, field_name, report):
 
 
 def _validate_sources(value, prefix, report, known_pages):
-    if not isinstance(value, list):
-        report["errors"].append(f"{prefix} ma nespravny typ pola 'citovane_zdroje' (ocakavany zoznam).")
-        return False
-    if not value:
-        report["errors"].append(f"{prefix} ma prazdne pole 'citovane_zdroje'.")
+    if isinstance(value, str):
+        if not value.strip():
+            report["errors"].append(f"{prefix} ma prazdne pole 'citovane_zdroje'.")
+            return False
+        normalized = [value]
+    elif isinstance(value, list):
+        if not value:
+            report["errors"].append(f"{prefix} ma prazdne pole 'citovane_zdroje'.")
+            return False
+        normalized = value
+    else:
+        report["errors"].append(
+            f"{prefix} ma nespravny typ pola 'citovane_zdroje' (ocakavany string alebo zoznam)."
+        )
         return False
 
-    for idx, item in enumerate(value, start=1):
+    for idx, item in enumerate(normalized, start=1):
         if isinstance(item, str):
             if not item.strip():
                 report["errors"].append(f"{prefix} ma v 'citovane_zdroje' prazdnu hodnotu na pozicii {idx}.")
@@ -205,7 +219,7 @@ def _validate_sources(value, prefix, report, known_pages):
         )
         return False
 
-    pages = parse_pages(value)
+    pages = parse_pages(normalized)
     if not pages:
         report["errors"].append(
             f"{prefix} ma v poli 'citovane_zdroje' neplatny format. Ocakavaju sa cisla stran."

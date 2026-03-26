@@ -4,7 +4,7 @@ from json_load import safe_load_json
 from llm_client import generate_with_retry
 
 
-def generate_learning_objects(segmenty, batch_size=20, model="gemini-2.5-flash-lite", client=None, verbose=True):
+def generate_learning_objects(segmenty, batch_size=10, model="gemini-2.5-flash-lite", client=None, verbose=True):
     vsetky_lo = []
     next_id = 1
 
@@ -29,8 +29,8 @@ id (jedinečný identifikátor 1, 2, 3...),
 vzdelávací_objekt (hlavný bod/cieľ, najviac dve slová),
 bloom_level (jedno z: Zapamätať si, Pochopiť, Aplikovať, Analyzovať, Hodnotiť, Vytvoriť),
 odporúčané_aktivity (krátky zoznam),
-odporúčané_zadania - v jednej úlohe maximálne jedno aktívne sloveso a slovesá nech sú v imperatíve (krátky popis),
-citovane_zdroje - každý vzdelávací objekt MUSÍ mať citované strany. Toto pole nesmie byť prázdne. (štruktúra citovane_zdroje: 1, 2, 3 ...).
+odporúčané_zadania - v jednej úlohe maximálne jedno aktívne sloveso a slovesá nech sú v imperatíve (krátky popis) (vystup ma byt ako suvisly text ziadne [] a tak),
+citovane_zdroje - každý vzdelávací objekt MUSÍ mať citované strany. Toto pole nesmie byť prázdne. (štruktúra citovane_zdroje: 1, 2, 3 ... ziadne pomlcky nič ani uvodzovky).
 
 V prípade, že identifikuješ časť materiálu ktorá má štruktúru začiatku dokumentu (napríklad obsah dokumentu, úvod atď.)
 tak túto časť ignoruj a nevytváraj pre ňu žiadne vzdelávacie objekty.

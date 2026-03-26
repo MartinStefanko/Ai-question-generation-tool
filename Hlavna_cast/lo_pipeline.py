@@ -1,3 +1,5 @@
+import time
+
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
 from lo_faithfulness import analyze_lo_faithfulness
@@ -7,6 +9,7 @@ from outputs import (
     save_document_topics_txt,
     save_lo_faithfulness_report,
     save_lo_relevance_to_segment_report,
+    save_processing_time_report,
     save_lo_validation_report,
     save_topic_coverage_report,
 )
@@ -23,17 +26,19 @@ def _lo_page_sort_key(lo):
 
 def generate_lo_pipeline(
     segmenty,
-    batch_size=20,
+    batch_size=10,
     model="gemini-2.5-flash-lite",
     generation_model=None,
     prerequisites_model=None,
     output_dir=None,
     client=None,
-    verbose=True
+    verbose=True,
+    return_metrics=False,
 ):
     generation_model = generation_model or model
     prerequisites_model = prerequisites_model or model
 
+    generation_start = time.perf_counter()
     los = generate_learning_objects(
         segmenty,
         batch_size=batch_size,
@@ -41,6 +46,17 @@ def generate_lo_pipeline(
         client=client,
         verbose=verbose
     )
+    generation_seconds = time.perf_counter() - generation_start
+    evaluation_seconds = 0.0
+    timing_report = {
+        "pipeline": "learning_objects",
+        "generation_seconds": round(generation_seconds, 4),
+        "evaluation_seconds": round(evaluation_seconds, 4),
+        "total_seconds": round(generation_seconds + evaluation_seconds, 4),
+        "details": {
+            "los_count": len(los),
+        },
+    }
     if not los:
         empty_report = validate_learning_objects([], allowed_pages=[])
         if output_dir:
@@ -67,16 +83,22 @@ def generate_lo_pipeline(
                 verbose=verbose,
             )
             save_lo_faithfulness_report(empty_faithfulness_report, output_dir)
+            save_processing_time_report(timing_report, output_dir, "lo_processing_time_report.txt")
+        if return_metrics:
+            return [], timing_report
         return []
 
+    generation_start = time.perf_counter()
     los = cluster_by_core(los)
     los.sort(key=_lo_page_sort_key)
     for i, obj in enumerate(los, start=1):
         obj["id"] = i
 
     los = infer_prerequisites(los, model=prerequisites_model, client=client, verbose=verbose)
+    generation_seconds += time.perf_counter() - generation_start
 
     allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+    evaluation_start = time.perf_counter()
     validation_report = validate_learning_objects(los, allowed_pages=allowed_pages)
     if output_dir:
         save_lo_validation_report(validation_report, output_dir)
@@ -100,8 +122,21 @@ def generate_lo_pipeline(
             los,
             client=client,
             verbose=verbose,
+            batch_size=batch_size,
         )
         save_lo_faithfulness_report(faithfulness_report, output_dir)
+    evaluation_seconds = time.perf_counter() - evaluation_start
+    timing_report = {
+        "pipeline": "learning_objects",
+        "generation_seconds": round(generation_seconds, 4),
+        "evaluation_seconds": round(evaluation_seconds, 4),
+        "total_seconds": round(generation_seconds + evaluation_seconds, 4),
+        "details": {
+            "los_count": len(los),
+        },
+    }
+    if output_dir:
+        save_processing_time_report(timing_report, output_dir, "lo_processing_time_report.txt")
 
     if verbose:
         if validation_report["is_valid"]:
@@ -113,4 +148,8 @@ def generate_lo_pipeline(
             )
             for error in validation_report["errors"][:10]:
                 print(f"  - {error}")
+        print(f"Cas generovania LO: {generation_seconds:.2f} s")
+        print(f"Cas evaluacie LO: {evaluation_seconds:.2f} s")
+    if return_metrics:
+        return los, timing_report
     return los
