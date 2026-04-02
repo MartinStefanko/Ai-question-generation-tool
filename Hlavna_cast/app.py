@@ -17,7 +17,7 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
 LO_PREREQ_MODEL = "gemini-2.5-flash-lite" 
 ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
-ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
 ITEM_EVALUATION_BATCH_SIZE = 20
 
 def to_list(value):
@@ -139,17 +139,22 @@ with tab_dokument:
                 st.session_state.los = los
                 st.session_state.lo_timing_report = lo_timing_report
 
+            lo_json_path, lo_txt_path = save_learning_objects_json_txt(
+                st.session_state.los,
+                OUTPUT_DIR,
+                all_los=lo_timing_report.get("all_los"),
+            )
+            st.session_state.lo_json_path = lo_json_path
+            st.session_state.lo_txt_path = lo_txt_path
+
             if st.session_state.los:
                 st.success(
                     f"Vzdelávacie objekty vygenerované: {len(st.session_state.los)}. "
                     f"Čas generovania: {lo_timing_report.get('generation_seconds', 0.0):.2f} s. "
                     f"Čas evaluácie: {lo_timing_report.get('evaluation_seconds', 0.0):.2f} s"
                 )
-                lo_json_path, lo_txt_path = save_learning_objects_json_txt(st.session_state.los, OUTPUT_DIR)
-                st.session_state.lo_json_path = lo_json_path
-                st.session_state.lo_txt_path = lo_txt_path
             else:
-                st.warning("Nepodarilo sa vygenerovať žiadne vzdelávacie objekty.")
+                st.warning("Žiadny vzdelávací objekt neprešiel filtrom.")
 
             if st.session_state.los:
                 with st.spinner("Generujem otázky a úlohy..."):
@@ -167,17 +172,22 @@ with tab_dokument:
                     st.session_state["items"] = items
                     st.session_state.item_timing_report = item_timing_report
 
+                q_json_path, q_txt_path = save_questions_json_txt(
+                    st.session_state["items"],
+                    OUTPUT_DIR,
+                    all_items=item_timing_report.get("all_items"),
+                )
+                st.session_state.questions_json_path = q_json_path
+                st.session_state.questions_txt_path = q_txt_path
+
                 if st.session_state["items"]:
                     st.success(
                         f"Otázky a úlohy vygenerované: {len(st.session_state['items'])}. "
                         f"Čas generovania: {item_timing_report.get('generation_seconds', 0.0):.2f} s. "
                         f"Čas evaluácie: {item_timing_report.get('evaluation_seconds', 0.0):.2f} s"
                     )
-                    q_json_path, q_txt_path = save_questions_json_txt(st.session_state["items"], OUTPUT_DIR)
-                    st.session_state.questions_json_path = q_json_path
-                    st.session_state.questions_txt_path = q_txt_path
                 else:
-                    st.warning("Nepodarilo sa vygenerovať žiadne otázky ani úlohy.")
+                    st.warning("Žiadna otázka ani úloha neprešla filtrom.")
 
                 with st.spinner("Vykresľujem vizualizáciu LO..."):
                     st.session_state.lo_graph_path = save_lo_graph_png(

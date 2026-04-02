@@ -1,4 +1,5 @@
 import time
+import re
 
 from context_builder import parse_pages
 from lo_clustering import cluster_by_core
@@ -16,6 +17,8 @@ from outputs import (
 from lo_validation import validate_learning_objects
 from prerequisites import infer_prerequisites
 from topic_coverage import analyze_topic_coverage
+
+LO_MIN_FAITHFULNESS_SCORE = 3
 
 
 def _lo_page_sort_key(lo):
@@ -85,6 +88,7 @@ def generate_lo_pipeline(
             save_lo_faithfulness_report(empty_faithfulness_report, output_dir)
             save_processing_time_report(timing_report, output_dir, "lo_processing_time_report.txt")
         if return_metrics:
+            timing_report["all_los"] = []
             return [], timing_report
         return []
 
@@ -100,30 +104,32 @@ def generate_lo_pipeline(
     allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
     evaluation_start = time.perf_counter()
     validation_report = validate_learning_objects(los, allowed_pages=allowed_pages)
+    coverage_report = analyze_topic_coverage(
+        segmenty,
+        los,
+        client=client,
+        verbose=verbose,
+    )
+    relevance_report = analyze_lo_relevance_to_segment(
+        segmenty,
+        los,
+        client=client,
+        verbose=verbose,
+    )
+    faithfulness_report = analyze_lo_faithfulness(
+        segmenty,
+        los,
+        client=client,
+        verbose=verbose,
+        batch_size=batch_size,
+    )
+    accepted_los = _filter_learning_objects_variant_b(los, validation_report, faithfulness_report)
+    normalized_los, lo_id_map = _normalize_learning_object_ids(accepted_los)
     if output_dir:
         save_lo_validation_report(validation_report, output_dir)
-        coverage_report = analyze_topic_coverage(
-            segmenty,
-            los,
-            client=client,
-            verbose=verbose,
-        )
         save_document_topics_txt(coverage_report.get("topics", []), output_dir)
         save_topic_coverage_report(coverage_report, output_dir)
-        relevance_report = analyze_lo_relevance_to_segment(
-            segmenty,
-            los,
-            client=client,
-            verbose=verbose,
-        )
         save_lo_relevance_to_segment_report(relevance_report, output_dir)
-        faithfulness_report = analyze_lo_faithfulness(
-            segmenty,
-            los,
-            client=client,
-            verbose=verbose,
-            batch_size=batch_size,
-        )
         save_lo_faithfulness_report(faithfulness_report, output_dir)
     evaluation_seconds = time.perf_counter() - evaluation_start
     timing_report = {
@@ -132,7 +138,8 @@ def generate_lo_pipeline(
         "evaluation_seconds": round(evaluation_seconds, 4),
         "total_seconds": round(generation_seconds + evaluation_seconds, 4),
         "details": {
-            "los_count": len(los),
+            "los_count_all": len(los),
+            "los_count_accepted": len(normalized_los),
         },
     }
     if output_dir:
@@ -151,5 +158,62 @@ def generate_lo_pipeline(
         print(f"Cas generovania LO: {generation_seconds:.2f} s")
         print(f"Cas evaluacie LO: {evaluation_seconds:.2f} s")
     if return_metrics:
-        return los, timing_report
-    return los
+        timing_report["all_los"] = los
+        timing_report["accepted_lo_id_map"] = lo_id_map
+        return normalized_los, timing_report
+    return normalized_los
+
+
+def _filter_learning_objects_variant_b(los, validation_report, faithfulness_report):
+    invalid_lo_ids = _extract_prefixed_ids(validation_report.get("errors", []), "LO")
+    faithfulness_by_id = {
+        row.get("lo_id"): row.get("faithfulness_score")
+        for row in faithfulness_report.get("items", [])
+        if row.get("lo_id") is not None
+    }
+
+    accepted = []
+    for lo in los:
+        lo_id = lo.get("id")
+        if lo_id in invalid_lo_ids:
+            continue
+        if not parse_pages(lo.get("citovane_zdroje", [])):
+            continue
+        faithfulness_score = faithfulness_by_id.get(lo_id)
+        if faithfulness_score is None or faithfulness_score < LO_MIN_FAITHFULNESS_SCORE:
+            continue
+        accepted.append(lo)
+    return accepted
+
+
+def _normalize_learning_object_ids(los):
+    normalized = []
+    lo_id_map = {}
+
+    for new_id, lo in enumerate(los, start=1):
+        original_id = lo.get("id")
+        cloned = dict(lo)
+        cloned["id"] = new_id
+        original_prereq = lo.get("prerekvizity", [])
+        cloned["prerekvizity"] = list(original_prereq) if isinstance(original_prereq, list) else []
+        normalized.append(cloned)
+        lo_id_map[original_id] = new_id
+
+    for lo in normalized:
+        lo["prerekvizity"] = [
+            lo_id_map[pr]
+            for pr in lo.get("prerekvizity", [])
+            if pr in lo_id_map
+        ]
+
+    return normalized, lo_id_map
+
+
+def _extract_prefixed_ids(errors, prefix):
+    ids = set()
+    pattern = re.compile(rf"{re.escape(prefix)}\s+(\d+)")
+    for error in errors:
+        match = pattern.search(str(error))
+        if match:
+            ids.add(int(match.group(1)))
+    return ids

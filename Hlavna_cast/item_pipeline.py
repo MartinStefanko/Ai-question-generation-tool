@@ -1,4 +1,5 @@
 import time
+import re
 
 from context_builder import build_page_map, build_context_for_lo, parse_pages
 from item_answerability import analyze_item_answerability
@@ -18,6 +19,11 @@ from outputs import (
     save_python_code_syntax_report,
 )
 from python_code_eval import evaluate_python_code_items
+
+ITEM_MIN_SCORE = 3
+ITEM_MIN_ANSWERABILITY_SCORE = 3
+ITEM_MIN_FAITHFULNESS_SCORE = 3
+PYTHON_MIN_TEST_PASS_RATE_PERCENT = 80.0
 
 
 def generate_items_for_batch(
@@ -373,44 +379,55 @@ def generate_all_items(
     for i, item in enumerate(all_items, start=1):
         item["id"] = i
 
+    evaluation_start_reports = time.perf_counter()
+    allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+    valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
+    item_validation_report = validate_items(
+        all_items,
+        allowed_pages=allowed_pages,
+        valid_lo_ids=valid_lo_ids,
+    )
+    item_relevance_report = analyze_item_relevance_to_lo(
+        all_items,
+        los,
+        client=client,
+        verbose=verbose,
+    )
+    item_faithfulness_report = analyze_item_faithfulness(
+        segmenty,
+        all_items,
+        client=client,
+        verbose=verbose,
+        batch_size=evaluation_batch_size,
+    )
+    item_answerability_report = analyze_item_answerability(
+        segmenty,
+        all_items,
+        client=client,
+        verbose=verbose,
+        batch_size=evaluation_batch_size,
+    )
+    syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
+    accepted_items = _filter_items_variant_b(
+        all_items,
+        item_validation_report,
+        item_faithfulness_report,
+        item_answerability_report,
+        syntax_report,
+        runtime_report,
+        correctness_report,
+    )
+    normalized_items = _normalize_accepted_items(accepted_items, valid_lo_ids)
+
     if output_dir:
-        evaluation_start_reports = time.perf_counter()
-        allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
-        valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
-        item_validation_report = validate_items(
-            all_items,
-            allowed_pages=allowed_pages,
-            valid_lo_ids=valid_lo_ids,
-        )
         save_item_validation_report(item_validation_report, output_dir)
-        item_relevance_report = analyze_item_relevance_to_lo(
-            all_items,
-            los,
-            client=client,
-            verbose=verbose,
-        )
         save_item_relevance_to_lo_report(item_relevance_report, output_dir)
-        item_faithfulness_report = analyze_item_faithfulness(
-            segmenty,
-            all_items,
-            client=client,
-            verbose=verbose,
-            batch_size=evaluation_batch_size,
-        )
         save_item_faithfulness_report(item_faithfulness_report, output_dir)
-        item_answerability_report = analyze_item_answerability(
-            segmenty,
-            all_items,
-            client=client,
-            verbose=verbose,
-            batch_size=evaluation_batch_size,
-        )
         save_item_answerability_report(item_answerability_report, output_dir)
-        syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
         save_python_code_syntax_report(syntax_report, output_dir)
         save_python_code_runtime_report(runtime_report, output_dir)
         save_python_code_correctness_report(correctness_report, output_dir)
-        evaluation_seconds += time.perf_counter() - evaluation_start_reports
+    evaluation_seconds += time.perf_counter() - evaluation_start_reports
 
     timing_report = {
         "pipeline": "items",
@@ -418,7 +435,8 @@ def generate_all_items(
         "evaluation_seconds": round(evaluation_seconds, 4),
         "total_seconds": round(generation_seconds + evaluation_seconds, 4),
         "details": {
-            "items_count": len(all_items),
+            "items_count_all": len(all_items),
+            "items_count_accepted": len(normalized_items),
             "los_count": len(los),
             "is_python_document": document_type_info.get("is_python_document", False),
             "document_type_reason": document_type_info.get("reason", ""),
@@ -433,8 +451,9 @@ def generate_all_items(
         print(f"Cas evaluacie položiek: {evaluation_seconds:.2f} s")
     if return_metrics:
         timing_report["document_type_info"] = document_type_info
-        return all_items, timing_report
-    return all_items
+        timing_report["all_items"] = all_items
+        return normalized_items, timing_report
+    return normalized_items
 
 
 def _normalize_generated_item(item):
@@ -577,6 +596,120 @@ def _has_invalid_function_mode_code(item):
         return True
 
     return not found_target_function
+
+
+def _is_python_practical_item(item):
+    return (
+        item.get("typ") == "prakticka_uloha"
+        and str(item.get("jazyk", "")).strip().lower() == "python"
+        and str(item.get("kod_riesenia", "")).strip()
+    )
+
+
+def _filter_items_variant_b(
+    items,
+    validation_report,
+    faithfulness_report,
+    answerability_report,
+    syntax_report,
+    runtime_report,
+    correctness_report,
+):
+    invalid_item_ids = _extract_prefixed_ids(validation_report.get("errors", []), "Polozka")
+    faithfulness_by_id = {
+        row.get("item_id"): row.get("faithfulness_score")
+        for row in faithfulness_report.get("items", [])
+        if row.get("item_id") is not None
+    }
+    answerability_by_id = {
+        row.get("item_id"): row.get("answerability_score")
+        for row in answerability_report.get("items", [])
+        if row.get("item_id") is not None
+    }
+    syntax_by_id = {
+        row.get("item_id"): row.get("syntax_valid")
+        for row in syntax_report.get("items", [])
+        if row.get("item_id") is not None
+    }
+    runtime_by_id = {
+        row.get("item_id"): row.get("runtime_valid")
+        for row in runtime_report.get("items", [])
+        if row.get("item_id") is not None
+    }
+    correctness_by_id = {
+        row.get("item_id"): row
+        for row in correctness_report.get("items", [])
+        if row.get("item_id") is not None
+    }
+
+    accepted = []
+    for item in items:
+        item_id = item.get("id")
+        if item_id in invalid_item_ids:
+            continue
+
+        faithfulness_score = faithfulness_by_id.get(item_id)
+        if faithfulness_score is None or faithfulness_score < ITEM_MIN_FAITHFULNESS_SCORE:
+            continue
+
+        score = _get_item_score(item)
+        answerability_score = answerability_by_id.get(item_id)
+        score_ok = score is not None and score >= ITEM_MIN_SCORE
+        answerability_ok = answerability_score is not None and answerability_score >= ITEM_MIN_ANSWERABILITY_SCORE
+        if not (score_ok or answerability_ok):
+            continue
+
+        if _is_python_practical_item(item):
+            if syntax_by_id.get(item_id) is not True:
+                continue
+            if runtime_by_id.get(item_id) is not True:
+                continue
+            correctness_row = correctness_by_id.get(item_id, {})
+            total = correctness_row.get("test_cases_total", 0)
+            passed = correctness_row.get("test_cases_passed", 0)
+            if total <= 0:
+                continue
+            pass_rate = (passed / total) * 100
+            if pass_rate < PYTHON_MIN_TEST_PASS_RATE_PERCENT:
+                continue
+
+        accepted.append(item)
+
+    return accepted
+
+
+def _normalize_accepted_items(items, valid_lo_ids):
+    normalized = []
+    valid_lo_ids = set(valid_lo_ids or [])
+    for new_id, item in enumerate(items, start=1):
+        if item.get("lo_id") not in valid_lo_ids:
+            continue
+        cloned = dict(item)
+        cloned["id"] = new_id
+        normalized.append(cloned)
+    return normalized
+
+
+def _get_item_score(item):
+    hodnotenie = item.get("hodnotenie", {})
+    if isinstance(hodnotenie, dict):
+        score = hodnotenie.get("skore")
+    else:
+        score = item.get("hodnotenie_skore")
+    try:
+        return int(score)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_prefixed_ids(errors, prefix):
+    ids = set()
+    pattern = re.compile(rf"{re.escape(prefix)}\s+(\d+)")
+    for error in errors:
+        match = pattern.search(str(error))
+        if match:
+            ids.add(int(match.group(1)))
+    return ids
 
 
 def classify_document_for_python_items(segmenty, client=None, model="gemini-2.5-flash-lite", verbose=True):
