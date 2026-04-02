@@ -23,6 +23,7 @@ from python_code_eval import evaluate_python_code_items
 def generate_items_for_batch(
     los_batch,
     page_map,
+    document_type_info=None,
     model="gemini-2.5-flash-lite",
     client=None,
     verbose=True
@@ -55,6 +56,9 @@ def generate_items_for_batch(
             f"- text:\n\"\"\"{block['context']}\"\"\""
         )
     los_text = "\n\n".join(parts)
+    document_type_info = document_type_info or {"is_python_document": False, "reason": ""}
+    python_document = bool(document_type_info.get("is_python_document", False))
+    document_type_reason = str(document_type_info.get("reason", "")).strip()
 
     prompt = f"""
 Si skusený učiteľ.
@@ -91,6 +95,20 @@ POŽIADAVKY:
 - Ak použiješ "function", "kod_riesenia" musí obsahovať len definície funkcií a prípadne importy alebo jednoduché konštanty.
 - Pri "function" NESMIE "kod_riesenia" obsahovať printy, demo volania funkcie, pevne vložené testovacie vstupy ani spúšťací kód mimo definície funkcie.
 - Pri "function" sa vstupy dodávajú len cez "test_cases".
+
+Klasifikácia dokumentu:
+- is_python_document: {"true" if python_document else "false"}
+- reason: {document_type_reason or "bez zdovodnenia"}
+
+TVRDÉ PRAVIDLO:
+- Ak is_python_document = false, NESMIEŠ generovať praktické úlohy s Python kódom ani Python testy.
+- Ak is_python_document = false a vytvoríš praktickú úlohu, musí byť bez kódu a bez testovacích polí:
+  "jazyk": "",
+  "kod_riesenia": "",
+  "execution_mode": "",
+  "function_name": "",
+  "automaticky_testovatelna": false,
+  "test_cases": []
 
 Zoznam LO:
 {los_text}
@@ -246,6 +264,12 @@ def generate_all_items(
     evaluation_model = evaluation_model or model
 
     page_map = build_page_map(segmenty)
+    document_type_info = classify_document_for_python_items(
+        segmenty,
+        client=client,
+        model=evaluation_model,
+        verbose=verbose,
+    )
     lo_order = {lo.get("id"): idx for idx, lo in enumerate(los)}
     all_items = []
     next_item_id = 1
@@ -270,6 +294,7 @@ def generate_all_items(
             raw_items = generate_items_for_batch(
                 batch,
                 page_map,
+                document_type_info=document_type_info,
                 model=generation_model,
                 client=client,
                 verbose=verbose
@@ -395,6 +420,8 @@ def generate_all_items(
         "details": {
             "items_count": len(all_items),
             "los_count": len(los),
+            "is_python_document": document_type_info.get("is_python_document", False),
+            "document_type_reason": document_type_info.get("reason", ""),
         },
     }
     if output_dir:
@@ -405,6 +432,7 @@ def generate_all_items(
         print(f"Cas generovania položiek: {generation_seconds:.2f} s")
         print(f"Cas evaluacie položiek: {evaluation_seconds:.2f} s")
     if return_metrics:
+        timing_report["document_type_info"] = document_type_info
         return all_items, timing_report
     return all_items
 
@@ -549,3 +577,55 @@ def _has_invalid_function_mode_code(item):
         return True
 
     return not found_target_function
+
+
+def classify_document_for_python_items(segmenty, client=None, model="gemini-2.5-flash-lite", verbose=True):
+    source_text = _build_full_document_text(segmenty)
+    if not source_text.strip():
+        return {"is_python_document": False, "reason": "Dokument nema text pre klasifikaciu."}
+
+    prompt = f"""
+Posud nasledujuci dokument a rozhodni, ci je to dokument o programovacom jazyku Python.
+
+Vrat LEN validny JSON v tvare:
+{{
+  "is_python_document": true,
+  "reason": "stručné zdôvodnenie"
+}}
+
+Pravidla:
+- true vrat len vtedy, ak je hlavnou temou dokumentu Python alebo vyucba programovania v jazyku Python
+- false vrat pri ekonomike, matematike, fyzike, vseobecnej informatike alebo inom ne-Python dokumente
+- false vrat aj vtedy, ak sa slovo Python spomenie len okrajovo
+
+Dokument:
+\"\"\"{source_text}\"\"\"
+"""
+
+    try:
+        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
+        parsed = safe_load_json(response.text if response else "")
+    except Exception as e:
+        if verbose:
+            print(f"Klasifikacia dokumentu pre Python polozky zlyhala: {e}")
+        return {"is_python_document": False, "reason": "Klasifikacia zlyhala, pouzity bezpecny fallback false."}
+
+    if not isinstance(parsed, dict):
+        return {"is_python_document": False, "reason": "Neplatna odpoved klasifikacie, pouzity bezpecny fallback false."}
+
+    return {
+        "is_python_document": bool(parsed.get("is_python_document", False)),
+        "reason": str(parsed.get("reason", "")).strip(),
+    }
+
+
+def _build_full_document_text(segmenty):
+    parts = []
+    for seg in segmenty:
+        text = str(seg.get("text", "")).strip()
+        if not text:
+            continue
+        page = seg.get("page")
+        block = f"[strana {page}]\n{text}" if page is not None else text
+        parts.append(block)
+    return "\n\n".join(parts)

@@ -14,10 +14,10 @@ from outputs import ( save_extracted_material_txt,
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
-LO_GENERATION_MODEL = "gemini-2.5-flash"
-LO_PREREQ_MODEL = "gemini-2.5-flash" 
-ITEM_GENERATION_MODEL = "gemini-2.5-flash"
-ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
+LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
+LO_PREREQ_MODEL = "gemini-2.5-flash-lite" 
+ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
 ITEM_EVALUATION_BATCH_SIZE = 20
 
 def to_list(value):
