@@ -48,27 +48,29 @@ tab_domov, tab_dokument, tab_lo, tab_otazky, tab_viz = st.tabs(
 
 with tab_domov:
     st.write(
-        "Tento nástroj slúži na automatické generovanie otázok, úloh, odpovedí a nápovedí z učebných materiálov vo formáte PDF. "
-        "Cieľom je uľahčiť študentom prácu s rozsiahlymi učebnými materiálmi a poskytnúť prehľadnú sadu " 
-        "učebných položiek (otázka, úloha, odpoveď, nápoveda)."
+        "Tento nástroj slúži na spracovanie učebného PDF dokumentu a automatické vytvorenie vzdelávacích objektov, "
+        "otázok a úloh viazaných na konkrétne časti zdrojového materiálu. Výstupom sú štruktúrované vzdelávacie objekty "
+        "s citovanými zdrojmi, prerekvizitami, otázkami alebo úlohami, odpoveďami, nápovedami a vizualizáciou ich vzťahov."
     )
 
     st.subheader("Postup spracovania dokumentu")
     st.markdown(
         """
         1. **Načítanie dokumentu** – používateľ nahrá PDF dokument, ktorý slúži ako vstupný učebný materiál.  
-        2. **Extrakcia a segmentácia textu** – z dokumentu sa extrahuje text a rozdelí sa na menšie časti pre ďalšie spracovanie.  
-        3. **Tvorba vzdelávacích objektov** – nástroj identifikuje základné vzdelávacie objekty (témy a pojmy) spolu s ich metadátami.  
-        4. **Zhlukovanie vzdelávacích objektov** – podobné alebo duplicitné vzdelávacie objekty sú automaticky zoskupované na základe sémantickej podobnosti.  
-        5. **Generovanie otázok a úloh** – pre každý vzdelávací objekt sa vytvárajú teoretické otázky alebo praktické úlohy spolu s odpoveďami a nápovedami.  
-        6. **Vizualizácia výsledkov** – vzdelávacie objekty a ich vzťahy sú prehľadne zobrazené pomocou grafických vizualizácií.
+        2. **Extrakcia textu** – z dokumentu sa získa text po jednotlivých stranách a uloží sa ako základ pre ďalšie spracovanie.  
+        3. **Generovanie vzdelávacích objektov** – z extrahovaného textu sa vytvoria vzdelávacie objekty s názvom, Bloomovou úrovňou, odporúčanými aktivitami, odporúčanými zadaniami a citovanými zdrojmi.  
+        4. **Zlúčenie a doplnenie LO** – podobné vzdelávacie objekty sa zoskupia, zoradia a doplnia sa medzi nimi prerekvizity.  
+        5. **Validácia a evaluácia LO** – kontroluje sa formálna správnosť výstupu, pokrytie tém, relevantnosť voči dokumentu a vernosť voči zdrojovému textu.  
+        6. **Generovanie otázok a úloh** – pre každý prijatý vzdelávací objekt sa vytvárajú teoretické otázky alebo praktické úlohy spolu s odpoveďou, nápovedou a citovanými zdrojmi.  
+        7. **Evaluácia otázok a úloh** – položky sa filtrujú podľa kvality, zodpovedateľnosti, vernosti voči zdrojovému textu a pri Python úlohách aj podľa spustiteľnosti a korektnosti testov.  
+        8. **Vizualizácia výsledkov** – vzdelávacie objekty a ich väzby sú zobrazené v grafe.
         """
     )
 
     st.write(
-        "Generovanie je postavené na veľkom jazykovom modeli (LLM), pričom jednotlivé otázky a odpovede sú viazané na konkrétne časti "
-        "zdrojového dokumentu (inšpirované RAG princípom). Zhlukovanie vzdelávacích objektov umožňuje odstrániť duplicity a lepšie " 
-        "zachytiť štruktúru učiva. Výsledkom je prehľad učebného obsahu, ktorý môže slúžiť ako podpora pri učení alebo príprave na skúšku."
+        "Generovanie nástroja je postavené na veľkom jazykovom modeli, pričom každý vzdelávací objekt aj každá vygenerovaná položka sú "
+        "naviazané na citované strany dokumentu. Nástroj priebežne kontroluje a filtruje vygenerovaný obsah, "
+        "aby výsledok čo najlepšie zodpovedal reálnemu obsahu nahraného materiálu. Výstupom je prehľad učebného obsahu, ktorý môže slúžiť ako podpora pri učení alebo príprave na skúšku."
     )
 
 
