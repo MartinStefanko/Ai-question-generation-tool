@@ -1,10 +1,12 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import tempfile
 import os
 import time
 from text_extraction import pdf_to_text
 from lo_pipeline import generate_lo_pipeline
 from item_pipeline import generate_all_items
+from visualization import build_lo_mindmap_html
 from outputs import ( save_extracted_material_txt,
     save_learning_objects_json_txt,
     save_learning_objects_pdf,
@@ -16,10 +18,10 @@ from outputs import ( save_extracted_material_txt,
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
-LO_GENERATION_MODEL = "gemini-2.5-flash"
-LO_PREREQ_MODEL = "gemini-2.5-flash" 
-ITEM_GENERATION_MODEL = "gemini-2.5-flash"
-ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
+LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
+LO_PREREQ_MODEL = "gemini-2.5-flash-lite" 
+ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
+ITEM_EVALUATION_MODEL = "gemini-2.5-flash"
 ITEM_EVALUATION_BATCH_SIZE = 20
 
 def to_list(value):
@@ -320,10 +322,15 @@ with tab_otazky:
                 st.markdown(f"**Citované zdroje:** {', '.join(to_list(it.get('citovane_zdroje'))) or '-'}")
 
 with tab_viz:
-  
-    if not st.session_state.get("lo_graph_path"):
+    if not st.session_state.get("los"):
         st.info("Vizualizácia zatiaľ nie je pripravená.")
     else:
-        st.image(st.session_state.lo_graph_path, caption="Vzdelávacie objekty a prerekvizity")
+        html = build_lo_mindmap_html(st.session_state.los)
+        if html is None:
+            st.warning("Myšlienková mapa sa nepodarila pripraviť.")
+        else:
+            st.caption("Myšlienková mapa LO. Klik na ľubovoľný uzol rozbalí jeho prerekvizity. Klik znovu ich zbalí.")
+   
+            components.html(html, height=760, scrolling=False)
     
     
