@@ -76,6 +76,9 @@ POŽIADAVKY:
 - NEvymýšľaj informácie, ktoré nie sú v texte.
 - Pre každú položku vždy uveď, ku ktorému LO patrí, pomocou poľa "lo_id".
 - Ak kontext neumožňuje žiadnu rozumnú položku, pre dané LO nevytváraj nič.
+- Formuluj otázky a úlohy ako samostatné vecné zadania o téme, nie ako pokyny na prácu s textom.
+- NEGENERUJ meta-formulácie typu "Prečítaj si text...", "Na základe textu..." ani otázky pýtajúce sa, čo študent pochopil z textu.
+- Otázka má smerovať priamo na odborný obsah, napr. definíciu, rozdiel, príčinu, postup, vlastnosť, výpočet alebo aplikáciu.
 - Testovateľné polia vypĺňaj len pre praktické úlohy v Pythone.
 - Zohľadni jazyk zdrojového dokumentu.
 - Ak je dokument o C++, Java, JavaScript, C# alebo inom jazyku, odpoveď a kód riešenia môžeš napísať v tomto jazyku.
