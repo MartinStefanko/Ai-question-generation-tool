@@ -9,6 +9,14 @@ def _write_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+def _to_text(value):
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ", ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip()
+
+
 def save_learning_objects_json_txt(los, output_dir, all_los=None):
     os.makedirs(output_dir, exist_ok=True)
 
@@ -545,6 +553,127 @@ def save_questions_json_txt(items, output_dir, all_items=None):
         f.write("\n".join(items_txt_lines))
 
     return items_json_path, items_txt_path
+
+
+def save_questions_pdf(items, output_dir):
+    try:
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    except ImportError:
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    pdf_path = os.path.join(output_dir, "questions.pdf")
+
+    font_name = "Helvetica"
+    font_candidates = [
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\calibri.ttf",
+        r"C:\Windows\Fonts\DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]
+    for font_path in font_candidates:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont("AppExportFont", font_path))
+                font_name = "AppExportFont"
+                break
+            except Exception:
+                continue
+
+    document_title = "Otázky a úlohy"
+
+    doc = SimpleDocTemplate(
+        pdf_path,
+        title=document_title,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "QuestionsTitle",
+        parent=styles["Title"],
+        fontName=font_name,
+        fontSize=16,
+        leading=20,
+        alignment=TA_LEFT,
+        spaceAfter=10,
+    )
+    heading_style = ParagraphStyle(
+        "QuestionsHeading",
+        parent=styles["Heading2"],
+        fontName=font_name,
+        fontSize=12,
+        leading=15,
+        alignment=TA_LEFT,
+        spaceBefore=8,
+        spaceAfter=6,
+    )
+    body_style = ParagraphStyle(
+        "QuestionsBody",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=10,
+        leading=13,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+
+    story = [Paragraph(document_title, title_style), Spacer(1, 4)]
+
+    for item in items:
+        item_id = item.get("id", "-")
+        lo_id = item.get("lo_id", "-")
+        typ = _to_text(item.get("typ")) or "-"
+        heading = f"Položka {item_id} | LO {lo_id} | {typ}"
+        story.append(Paragraph(heading, heading_style))
+
+        rows = [
+            ("Otázka", _to_text(item.get("otazka")) or "-"),
+            ("Odpoveď", _to_text(item.get("odpoved")) or "-"),
+            ("Nápoveda", _to_text(item.get("napoveda")) or "-"),
+            ("Citované zdroje", _to_text(item.get("citovane_zdroje")) or "-"),
+        ]
+
+        jazyk = _to_text(item.get("jazyk"))
+        if jazyk:
+            rows.append(("Jazyk", jazyk))
+
+        kod_riesenia = _to_text(item.get("kod_riesenia"))
+        if kod_riesenia:
+            rows.append(("Kód riešenia", kod_riesenia.replace("\n", "<br/>")))
+
+        hodnotenie = item.get("hodnotenie", {})
+        if isinstance(hodnotenie, dict):
+            skore = hodnotenie.get("skore")
+            zdovodnenie = _to_text(hodnotenie.get("zdovodnenie"))
+        else:
+            skore = item.get("hodnotenie_skore")
+            zdovodnenie = _to_text(item.get("hodnotenie_zdovodnenie"))
+
+        if skore is not None:
+            rows.append(("Hodnotenie", str(skore)))
+        if zdovodnenie:
+            rows.append(("Zdôvodnenie hodnotenia", zdovodnenie))
+
+        for label, value in rows:
+            text = f"<b>{label}:</b> {value}"
+            story.append(Paragraph(text, body_style))
+
+        story.append(Spacer(1, 8))
+
+    doc.build(story)
+    return pdf_path
 
 
 def save_lo_graph_png(los, output_dir, layer_gap=10.0, node_gap=6.0):

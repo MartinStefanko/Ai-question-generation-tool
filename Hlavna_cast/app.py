@@ -8,15 +8,16 @@ from item_pipeline import generate_all_items
 from outputs import ( save_extracted_material_txt,
     save_learning_objects_json_txt,
     save_questions_json_txt,
+    save_questions_pdf,
     save_lo_graph_png,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "vystup")
 
-LO_GENERATION_MODEL = "gemini-2.5-flash-lite"
-LO_PREREQ_MODEL = "gemini-2.5-flash-lite" 
-ITEM_GENERATION_MODEL = "gemini-2.5-flash-lite"
+LO_GENERATION_MODEL = "gemini-2.5-flash"
+LO_PREREQ_MODEL = "gemini-2.5-flash" 
+ITEM_GENERATION_MODEL = "gemini-2.5-flash"
 ITEM_EVALUATION_MODEL = "gemini-2.5-flash-lite"
 ITEM_EVALUATION_BATCH_SIZE = 20
 
@@ -37,6 +38,26 @@ def render_list(label, value):
             st.markdown(f"- {item}")
     else:
         st.markdown(f"**{label}:** -")
+
+
+def _read_download_bytes(path):
+    if not path or not os.path.exists(path):
+        return None
+    with open(path, "rb") as f:
+        return f.read()
+
+
+def render_download_button(label, path, mime, key):
+    data = _read_download_bytes(path)
+    if data is None:
+        return
+    st.download_button(
+        label=label,
+        data=data,
+        file_name=os.path.basename(path),
+        mime=mime,
+        key=key,
+    )
 
 st.set_page_config(layout="centered")
 
@@ -93,6 +114,8 @@ if "questions_json_path" not in st.session_state:
     st.session_state.questions_json_path = None
 if "questions_txt_path" not in st.session_state:
     st.session_state.questions_txt_path = None
+if "questions_pdf_path" not in st.session_state:
+    st.session_state.questions_pdf_path = None
 if "lo_timing_report" not in st.session_state:
     st.session_state.lo_timing_report = None
 if "item_timing_report" not in st.session_state:
@@ -113,6 +136,7 @@ with tab_dokument:
             st.session_state.lo_txt_path = None
             st.session_state.questions_json_path = None
             st.session_state.questions_txt_path = None
+            st.session_state.questions_pdf_path = None
             st.session_state.lo_timing_report = None
             st.session_state.item_timing_report = None
 
@@ -179,8 +203,13 @@ with tab_dokument:
                     OUTPUT_DIR,
                     all_items=item_timing_report.get("all_items"),
                 )
+                q_pdf_path = save_questions_pdf(
+                    st.session_state["items"],
+                    OUTPUT_DIR,
+                )
                 st.session_state.questions_json_path = q_json_path
                 st.session_state.questions_txt_path = q_txt_path
+                st.session_state.questions_pdf_path = q_pdf_path
 
                 if st.session_state["items"]:
                     st.success(
@@ -236,6 +265,14 @@ with tab_otazky:
     else:
         st.subheader("Otázky a úlohy")
         st.metric("Počet položiek", len(st.session_state["items"]))
+        render_download_button(
+            "Stiahnuť otázky v PDF",
+            st.session_state.get("questions_pdf_path"),
+            "application/pdf",
+            "download_questions_pdf",
+        )
+        if st.session_state.get("questions_pdf_path") is None:
+            st.caption("PDF export bude dostupný po nainštalovaní knižnice `reportlab`.")
         for it in st.session_state["items"]:
             item_id = it.get("id", "-")
             lo_id = it.get("lo_id", "-")

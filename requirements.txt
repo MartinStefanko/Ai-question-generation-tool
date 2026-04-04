@@ -11,7 +11,8 @@ numpy
 opencv-python
 scikit-learn
 streamlit
-tempfile
+reportlab
+
 
 #huggingface_hub
 #transformers 
