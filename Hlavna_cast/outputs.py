@@ -64,6 +64,103 @@ def save_learning_objects_json_txt(los, output_dir, all_los=None):
     return out_path, txt_path
 
 
+def save_learning_objects_pdf(los, output_dir):
+    try:
+        from reportlab.lib.enums import TA_LEFT
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    except ImportError:
+        return None
+
+    os.makedirs(output_dir, exist_ok=True)
+    pdf_path = os.path.join(output_dir, "learning_objects.pdf")
+    document_title = "Vzdelávacie objekty"
+
+    font_name = "Helvetica"
+    font_candidates = [
+        r"C:\Windows\Fonts\arial.ttf",
+        r"C:\Windows\Fonts\calibri.ttf",
+        r"C:\Windows\Fonts\DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+    ]
+    for font_path in font_candidates:
+        if os.path.exists(font_path):
+            try:
+                pdfmetrics.registerFont(TTFont("AppExportFont", font_path))
+                font_name = "AppExportFont"
+                break
+            except Exception:
+                continue
+
+    doc = SimpleDocTemplate(
+        pdf_path,
+        title=document_title,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=18 * mm,
+        bottomMargin=18 * mm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "LearningObjectsTitle",
+        parent=styles["Title"],
+        fontName=font_name,
+        fontSize=16,
+        leading=20,
+        alignment=TA_LEFT,
+        spaceAfter=10,
+    )
+    heading_style = ParagraphStyle(
+        "LearningObjectsHeading",
+        parent=styles["Heading2"],
+        fontName=font_name,
+        fontSize=12,
+        leading=15,
+        alignment=TA_LEFT,
+        spaceBefore=8,
+        spaceAfter=6,
+    )
+    body_style = ParagraphStyle(
+        "LearningObjectsBody",
+        parent=styles["BodyText"],
+        fontName=font_name,
+        fontSize=10,
+        leading=13,
+        alignment=TA_LEFT,
+        spaceAfter=4,
+    )
+
+    story = [Paragraph(document_title, title_style), Spacer(1, 4)]
+
+    for lo in los:
+        lo_id = lo.get("id", "-")
+        lo_name = _to_text(lo.get("vzdelávací_objekt")) or "-"
+        story.append(Paragraph(f"LO {lo_id} | {lo_name}", heading_style))
+
+        rows = [
+            ("Bloom level", _to_text(lo.get("bloom_level")) or "-"),
+            ("Odporúčané aktivity", _to_text(lo.get("odporúčané_aktivity")) or "-"),
+            ("Odporúčané zadania", _to_text(lo.get("odporúčané_zadania")) or "-"),
+            ("Prerekvizity", _to_text(lo.get("prerekvizity")) or "-"),
+            ("Citované zdroje", _to_text(lo.get("citovane_zdroje")) or "-"),
+        ]
+
+        for label, value in rows:
+            story.append(Paragraph(f"<b>{label}:</b> {value}", body_style))
+
+        story.append(Spacer(1, 8))
+
+    doc.build(story)
+    return pdf_path
+
+
 def save_extracted_material_txt(segmenty, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 

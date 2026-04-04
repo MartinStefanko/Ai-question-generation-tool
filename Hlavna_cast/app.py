@@ -7,6 +7,7 @@ from lo_pipeline import generate_lo_pipeline
 from item_pipeline import generate_all_items
 from outputs import ( save_extracted_material_txt,
     save_learning_objects_json_txt,
+    save_learning_objects_pdf,
     save_questions_json_txt,
     save_questions_pdf,
     save_lo_graph_png,
@@ -110,6 +111,8 @@ if "lo_json_path" not in st.session_state:
     st.session_state.lo_json_path = None
 if "lo_txt_path" not in st.session_state:
     st.session_state.lo_txt_path = None
+if "lo_pdf_path" not in st.session_state:
+    st.session_state.lo_pdf_path = None
 if "questions_json_path" not in st.session_state:
     st.session_state.questions_json_path = None
 if "questions_txt_path" not in st.session_state:
@@ -134,6 +137,7 @@ with tab_dokument:
             st.session_state.lo_graph_path = None
             st.session_state.lo_json_path = None
             st.session_state.lo_txt_path = None
+            st.session_state.lo_pdf_path = None
             st.session_state.questions_json_path = None
             st.session_state.questions_txt_path = None
             st.session_state.questions_pdf_path = None
@@ -170,8 +174,13 @@ with tab_dokument:
                 OUTPUT_DIR,
                 all_los=lo_timing_report.get("all_los"),
             )
+            lo_pdf_path = save_learning_objects_pdf(
+                st.session_state.los,
+                OUTPUT_DIR,
+            )
             st.session_state.lo_json_path = lo_json_path
             st.session_state.lo_txt_path = lo_txt_path
+            st.session_state.lo_pdf_path = lo_pdf_path
 
             if st.session_state.los:
                 st.success(
@@ -241,6 +250,14 @@ with tab_lo:
     else:
         st.subheader("Vzdelávacie objekty")
         st.metric("Počet LO", len(st.session_state.los))
+        render_download_button(
+            "Stiahnuť LO v PDF",
+            st.session_state.get("lo_pdf_path"),
+            "application/pdf",
+            "download_lo_pdf",
+        )
+        if st.session_state.get("lo_pdf_path") is None:
+            st.caption("PDF export bude dostupný po nainštalovaní knižnice `reportlab`.")
         for obj in st.session_state.los:
             lo_id = obj.get("id", "-")
             lo_name = obj.get("vzdelávací_objekt", "Bez názvu")
