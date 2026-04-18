@@ -12,7 +12,6 @@ from outputs import ( save_extracted_material_txt,
     save_learning_objects_pdf,
     save_questions_json_txt,
     save_questions_pdf,
-    save_lo_graph_png,
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -87,7 +86,7 @@ with tab_domov:
         5. **Validácia a evaluácia LO** – kontroluje sa formálna správnosť výstupu, pokrytie tém, relevantnosť voči dokumentu a vernosť voči zdrojovému textu.  
         6. **Generovanie otázok a úloh** – pre každý prijatý vzdelávací objekt sa vytvárajú teoretické otázky alebo praktické úlohy spolu s odpoveďou, nápovedou a citovanými zdrojmi.  
         7. **Evaluácia otázok a úloh** – položky sa filtrujú podľa kvality, zodpovedateľnosti, vernosti voči zdrojovému textu a pri Python úlohách aj podľa spustiteľnosti a korektnosti testov.  
-        8. **Vizualizácia výsledkov** – vzdelávacie objekty a ich väzby sú zobrazené v grafe.
+        8. **Vizualizácia výsledkov** – vzdelávacie objekty a ich väzby sú zobrazené v interaktívnej myšlienkovej mape.
         """
     )
 
@@ -107,8 +106,8 @@ if "los" not in st.session_state:
     st.session_state.los = None
 if "items" not in st.session_state:
     st.session_state["items"] = None
-if "lo_graph_path" not in st.session_state:
-    st.session_state.lo_graph_path = None
+if "lo_mindmap_html" not in st.session_state:
+    st.session_state.lo_mindmap_html = None
 if "lo_json_path" not in st.session_state:
     st.session_state.lo_json_path = None
 if "lo_txt_path" not in st.session_state:
@@ -136,7 +135,7 @@ with tab_dokument:
         if st.button("Spustiť extrakciu textu", use_container_width=False):
             st.session_state.los = None
             st.session_state["items"] = None
-            st.session_state.lo_graph_path = None
+            st.session_state.lo_mindmap_html = None
             st.session_state.lo_json_path = None
             st.session_state.lo_txt_path = None
             st.session_state.lo_pdf_path = None
@@ -232,14 +231,12 @@ with tab_dokument:
                     st.warning("Žiadna otázka ani úloha neprešla filtrom.")
 
                 with st.spinner("Vykresľujem vizualizáciu LO..."):
-                    st.session_state.lo_graph_path = save_lo_graph_png(
-                        st.session_state.los,
-                        OUTPUT_DIR,
-                        layer_gap=10.0,
-                        node_gap=6.0
-                    )
+                    st.session_state.lo_mindmap_html = build_lo_mindmap_html(st.session_state.los)
 
-                st.success(f"Vizualizácia vzdelávacích objektov vykreslená.")
+                if st.session_state.lo_mindmap_html is None:
+                    st.warning("Myšlienková mapa sa nepodarila pripraviť.")
+                else:
+                    st.success("Vizualizácia vzdelávacích objektov vykreslená.")
 
             
 
@@ -325,11 +322,14 @@ with tab_viz:
     if not st.session_state.get("los"):
         st.info("Vizualizácia zatiaľ nie je pripravená.")
     else:
-        html = build_lo_mindmap_html(st.session_state.los)
+        html = st.session_state.get("lo_mindmap_html")
+        if html is None:
+            html = build_lo_mindmap_html(st.session_state.los)
+            st.session_state.lo_mindmap_html = html
         if html is None:
             st.warning("Myšlienková mapa sa nepodarila pripraviť.")
         else:
-            st.caption("Myšlienková mapa LO. Klik na ľubovoľný uzol rozbalí jeho prerekvizity. Klik znovu ich zbalí.")
+            st.caption("Myšlienková mapa LO. Klik na uzol rozbalí nadväzujúce vzdelávacie objekty. Klik znovu ich zbalí.")
    
             components.html(html, height=760, scrolling=False)
     
