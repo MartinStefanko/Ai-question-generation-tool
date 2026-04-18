@@ -18,6 +18,9 @@ vystup/
 *.png
 *.json
 
+# Test input materials
+Hlavna_cast/ucebny_material/
+*.pdf
 
 # Temp files
 *.tmp
