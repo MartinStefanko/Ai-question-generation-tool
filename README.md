@@ -25,11 +25,21 @@ Pred spustením projektu je potrebné mať nainštalované:
 - odporúčaná verzia: Python 3.12,
 - nástroj `pip`,
 - internetové pripojenie,
-- API kľúč pre Gemini.
+- API kľúč pre Gemini,
+- vo Windowse: Microsoft Visual C++ Redistributable pre Visual Studio 2015-2022, odporúčané nainštalovať verziu x64 aj x86.
 
 Projekt bol vyvíjaný a testovaný na Python 3.12.6. Použitie Pythonu 3.10 alebo novšieho by malo byť možné, ale odporúča sa Python 3.12.
 
 Projekt bol pripravovaný ako lokálna Streamlit aplikácia.
+
+Skontrolujte si, či máte nainštalované Microsoft Visual C++ Redistributable x64 a x86.
+
+Vo Windowse je možné Microsoft Visual C++ Redistributable nainštalovať cez `winget`:
+
+```bash
+winget install --id Microsoft.VCRedist.2015+.x64 -e
+winget install --id Microsoft.VCRedist.2015+.x86 -e
+```
 
 ## Inštalácia
 
@@ -144,6 +154,20 @@ Ak sa aplikácia nespustí kvôli chýbajúcim knižniciam, znova spustite:
 ```bash
 pip install -r requirements.txt
 ```
+
+Ak sa zobrazí chyba typu `DLL load failed`, vo Windows pravdepodobne chýba Microsoft Visual C++ Redistributable. Nainštalujte obe verzie:
+
+- Microsoft Visual C++ Redistributable 2015-2022 x64,
+- Microsoft Visual C++ Redistributable 2015-2022 x86.
+
+Príkazy pre inštaláciu cez `winget`:
+
+```bash
+winget install --id Microsoft.VCRedist.2015+.x64 -e
+winget install --id Microsoft.VCRedist.2015+.x86 -e
+```
+
+Po inštalácii odporúčame zavrieť terminál, otvoriť ho znova, aktivovať virtuálne prostredie a aplikáciu spustiť opäť.
 
 Ak sa príkaz `streamlit` nerozpozná, skontrolujte, či je aktivované virtuálne prostredie.
 
