@@ -13,16 +13,4 @@ scikit-learn
 streamlit
 reportlab
 
-
-#huggingface_hub
-#transformers 
-#sentencepiece 
-#accelerate 
-#safetensors
-#pyvis
-#jinja2
-#pdfplumber
-#pdfminer.six
-#pdf2image 
-#pytesseract
 #pip install -r requirements.txt
