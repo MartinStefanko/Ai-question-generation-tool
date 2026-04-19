@@ -26,15 +26,21 @@ Pred spustením projektu je potrebné mať nainštalované:
 - nástroj `pip`,
 - internetové pripojenie,
 - API kľúč pre Gemini,
-- vo Windowse: Microsoft Visual C++ Redistributable pre Visual Studio 2015-2022, odporúčané nainštalovať verziu x64 aj x86.
+- vo Windowse: Microsoft Visual C++ v14 Redistributable, odporúčané nainštalovať verziu x64 aj x86.
 
 Projekt bol vyvíjaný a testovaný na Python 3.12.6. Použitie Pythonu 3.10 alebo novšieho by malo byť možné, ale odporúča sa Python 3.12.
 
 Projekt bol pripravovaný ako lokálna Streamlit aplikácia.
 
-Skontrolujte si, či máte nainštalované Microsoft Visual C++ Redistributable x64 a x86.
+Skontrolujte si, či máte nainštalované Microsoft Visual C++ v14 Redistributable x64 a x86.
 
-Vo Windowse je možné Microsoft Visual C++ Redistributable nainštalovať cez `winget`:
+Inštalačný súbor je možné stiahnuť z oficiálnej stránky Microsoftu:
+
+```text
+https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+```
+
+Vo Windowse je možné Microsoft Visual C++ v14 Redistributable nainštalovať aj cez `winget`. Balík má vo `winget` identifikátor `Microsoft.VCRedist.2015+`:
 
 ```bash
 winget install --id Microsoft.VCRedist.2015+.x64 -e
@@ -155,12 +161,18 @@ Ak sa aplikácia nespustí kvôli chýbajúcim knižniciam, znova spustite:
 pip install -r requirements.txt
 ```
 
-Ak sa zobrazí chyba typu `DLL load failed`, vo Windows pravdepodobne chýba Microsoft Visual C++ Redistributable. Nainštalujte obe verzie:
+Ak sa zobrazí chyba typu `DLL load failed`, vo Windows pravdepodobne chýba Microsoft Visual C++ v14 Redistributable. Nainštalujte obe verzie:
 
-- Microsoft Visual C++ Redistributable 2015-2022 x64,
-- Microsoft Visual C++ Redistributable 2015-2022 x86.
+- Microsoft Visual C++ v14 Redistributable x64,
+- Microsoft Visual C++ v14 Redistributable x86.
 
-Príkazy pre inštaláciu cez `winget`:
+Oficiálna stránka Microsoftu na stiahnutie:
+
+```text
+https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
+```
+
+Príkazy pre inštaláciu Microsoft Visual C++ v14 Redistributable cez `winget`:
 
 ```bash
 winget install --id Microsoft.VCRedist.2015+.x64 -e
