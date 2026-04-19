@@ -40,7 +40,7 @@ Inštalačný súbor je možné stiahnuť z oficiálnej stránky Microsoftu:
 https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170
 ```
 
-Vo Windowse je možné Microsoft Visual C++ v14 Redistributable nainštalovať aj cez `winget`. Balík má vo `winget` identifikátor `Microsoft.VCRedist.2015+`:
+Vo Windowse je možné Microsoft Visual C++ v14 Redistributable nainštalovať aj cez `winget` a to nasledovne:
 
 ```bash
 winget install --id Microsoft.VCRedist.2015+.x64 -e
