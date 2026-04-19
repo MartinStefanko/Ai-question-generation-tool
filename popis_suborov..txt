@@ -1,0 +1,92 @@
+Popis súborov projektu
+
+
+.env
+- Lokálny konfiguračný súbor s API kľúčom pre Gemini. Je potrebné ho manuálne vytvoriť.
+
+README.md
+- Dokumentácia projektu. Popisuje inštaláciu, nastavenie API kľúča, spustenie cez Streamlit a použitie aplikácie.
+
+requirements.txt
+- Zoznam Python knižníc potrebných na spustenie aplikácie, napríklad Streamlit, Google GenAI, OCR, spracovanie PDF, grafy a export do PDF.
+
+venv/
+- Virtuálne Python prostredie s lokálne nainštalovanými knižnicami projektu. Vytvorí sa pri inštalácii projektu.
+
+Hlavna_cast/
+- Hlavný priečinok aplikácie.
+
+
+Hlavna_cast
+
+
+Hlavna_cast/app.py
+- Hlavný vstupný bod Streamlit aplikácie. Vytvára webové používateľské rozhranie, spracuje nahraté PDF, spúšťa extrakciu textu, generovanie vzdelávacích objektov, generovanie otázok a úloh a vizualizáciu.
+
+Hlavna_cast/context_builder.py
+- Obsahuje pomocné funkcie na prácu s textom. Vytvára mapu strán dokumentu, číta čísla strán z citovaných zdrojov a skladá kontext pre generovanie konkrétnych vzdelávacích objektov alebo položiek.
+
+Hlavna_cast/item_answerability.py
+- Obsahuje hodnotenie, či sa na vygenerované otázky dá odpovedať zo zdrojového textu. Používa LLM a výstupom je report so skóre a zdôvodnením.
+
+Hlavna_cast/item_faithfulness.py
+- Obsahuje hodnotenie, či odpovede k otázkam a úlohám zostávajú verné citovanému zdrojovému textu. Porovnáva obsah položky s relevantnými stranami dokumentu.
+
+Hlavna_cast/item_pipeline.py
+- Riadi celý proces generovania a filtrovania otázok a úloh. Generuje položky pre vzdelávacie objekty, hodnotí ich kvalitu, kontroluje odpovedateľnosť, vernosť zdroju a pri Python úlohách aj spustiteľnosť testov.
+
+Hlavna_cast/item_relevance_to_lo.py
+- Počíta podobnosť medzi vygenerovanou položkou a príslušným vzdelávacím objektom pomocou embeddingov. Slúži na kontrolu tematickej naviazanosti otázok a úloh.
+
+Hlavna_cast/item_validation.py
+- Formálne validuje JSON štruktúru otázok a úloh. Kontroluje povinné polia, typ položky, ID, citované zdroje, prázdne hodnoty a odkazy na existujúce vzdelávacie objekty.
+
+Hlavna_cast/json_load.py
+- Obsahuje bezpečné načítanie JSON výstupov z odpovedí modelu. Ak odpoveď obsahuje text navyše, pokúsi sa z nej vybrať JSON pole alebo objekt.
+
+Hlavna_cast/llm_client.py
+- Rieši prácu s Gemini API. Načíta API kľúč zo súboru .env, vytvorí klienta a zabezpečuje, že v prípade chyby modelu sa generovanie opakuje.
+
+Hlavna_cast/lo_clustering.py
+- Zhlukuje podobné vzdelávacie objekty pomocou embeddingov a kosínovej podobnosti. Odstraňuje duplicitné alebo veľmi podobné LO.
+
+Hlavna_cast/lo_faithfulness.py
+- Obsahuje hodnotenie, či vzdelávacie objekty vychádzajú zo zdrojového textu. Pre každé LO porovnáva jeho obsah s citovanými stranami a vracia skóre vernosti.
+
+Hlavna_cast/lo_generation.py
+- Generuje vzdelávacie objekty z extrahovaného textu dokumentu. Text spracúva po batchoch, volá LLM, parsuje JSON a dopĺňa chýbajúce citované zdroje.
+
+Hlavna_cast/lo_pipeline.py
+- Riadi celý proces tvorby vzdelávacích objektov. Spúšťa generovanie, zhlukovanie, doplnenie prerekvizít, validáciu, kontrolu pokrytia tém, relevanciu a filtrovanie.
+
+Hlavna_cast/lo_relevance_to_segment.py
+- Porovnáva vzdelávacie objekty s citovaným zdrojovým segmentom pomocou embeddingov. Vytvára report o tom, ako dobre LO zodpovedá uvedeným stranám.
+
+Hlavna_cast/lo_validation.py
+- Formálne validuje vzdelávacie objekty. Kontroluje povinné polia, Bloomovu úroveň, ID, citované zdroje, prerekvizity, duplicity a odkazy na existujúce strany.
+
+Hlavna_cast/outputs.py
+- Obsahuje funkcie na ukladanie výstupov a reportov. Exportuje extrahovaný text, vzdelávacie objekty, otázky, PDF, TXT, JSON, časové reporty a hodnotiace reporty.
+
+Hlavna_cast/prerequisites.py
+- Dopĺňa prerekvizity medzi vzdelávacími objektmi pomocou LLM. Výstupom sú odkazy na LO, ktoré majú predchádzať iným LO.
+
+Hlavna_cast/python_code_eval.py
+- Automaticky kontroluje praktické Python úlohy. Overuje syntax, spustenie kódu a korektnosť riešenia podľa testovacích prípadov.
+
+Hlavna_cast/text_extraction.py
+- Extrahuje text z PDF dokumentu. Kombinuje klasické čítanie textu cez pypdf s OCR spracovaním obrázkov cez EasyOCR, PyMuPDF, NumPy a OpenCV.
+
+Hlavna_cast/topic_coverage.py
+- Identifikuje hlavné témy dokumentu a kontroluje, či sú pokryté vygenerovanými vzdelávacími objektmi. Používa LLM a embeddingovú podobnosť.
+
+Hlavna_cast/visualization.py
+- Vytvára vizualizácie vzdelávacích objektov, ich prerekvizít vo forme interaktívnej myšlienkovej mapy.
+
+
+Generované výstupy
+
+
+Hlavna_cast/vystup/
+- Priečinok pre výstupy vytvárané aplikáciou. Automaticky sa vytvorí pri spracovaní dokumentu.
+
