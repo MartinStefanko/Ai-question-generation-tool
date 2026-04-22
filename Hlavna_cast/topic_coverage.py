@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from json_load import safe_load_json
+from context_builder import format_segment_label
 from llm_client import generate_with_retry
 from lo_clustering import EMBEDDING_MODEL, _embed_batch, _ensure_client, normalize_list_field
 
@@ -132,7 +133,7 @@ def _build_topic_source_text(segmenty):
         if not text:
             continue
         page = seg.get("page")
-        block = f"[strana {page}]\n{text}" if page is not None else text
+        block = f"[{format_segment_label(seg)}]\n{text}" if page is not None else text
         if total_len + len(block) > MAX_SOURCE_CHARS:
             remaining = MAX_SOURCE_CHARS - total_len
             if remaining > 0:

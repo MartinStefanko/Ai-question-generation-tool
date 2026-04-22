@@ -1,5 +1,6 @@
 ﻿import time
 
+from context_builder import format_segment_label, make_source_ref
 from json_load import safe_load_json
 from llm_client import generate_with_retry
 
@@ -18,7 +19,7 @@ def generate_learning_objects(segmenty, batch_size=10, model="gemini-2.5-flash-l
         parts = []
         start_batch = time.perf_counter()
         for seg in batch:
-            parts.append(f"{seg.get('text', '')}")
+            parts.append(f"[{format_segment_label(seg)}]\n{seg.get('text', '')}")
         combined_text = "\n\n".join(parts)
 
         prompt = f"""
@@ -30,7 +31,7 @@ vzdelávací_objekt (hlavný bod/cieľ, najviac dve slová),
 bloom_level (jedno z: Zapamätať si, Pochopiť, Aplikovať, Analyzovať, Hodnotiť, Vytvoriť),
 odporúčané_aktivity (krátky zoznam),
 odporúčané_zadania - v jednej úlohe maximálne jedno aktívne sloveso a slovesá nech sú v imperatíve (krátky popis) (vystup ma byt ako suvisly text ziadne [] a tak),
-citovane_zdroje - každý vzdelávací objekt MUSÍ mať citované strany. Toto pole nesmie byť prázdne. (štruktúra citovane_zdroje: 1, 2, 3 ... ziadne pomlcky nič ani uvodzovky).
+citovane_zdroje - každý vzdelávací objekt MUSÍ mať citovaný konkrétny dokument a stranu. Toto pole nesmie byť prázdne. Použi formát ["D1:1", "D2:5"] podľa značiek dokumentov v texte.
 
 V prípade, že identifikuješ časť materiálu ktorá má štruktúru začiatku dokumentu (napríklad obsah dokumentu, úvod atď.)
 tak túto časť ignoruj a nevytváraj pre ňu žiadne vzdelávacie objekty.
@@ -80,8 +81,9 @@ Vyučovací materiál:
             parts_with_pages = []
             for seg in batch:
                 page = seg.get("page")
+                source_id = seg.get("source_id")
                 text = seg.get("text", "")
-                parts_with_pages.append(f"[strana {page}]\n{text}")
+                parts_with_pages.append(f"[zdroj {make_source_ref(source_id, page)}]\n{text}")
             batch_text_with_pages = "\n\n".join(parts_with_pages)
 
             lo_summary = []
@@ -96,8 +98,8 @@ Vyučovací materiál:
 
             prompt_missing = f"""
                 Si ucitel. Doplň pole citovane_zdroje pre nasledujuce LO, kde je prazdne. 
-                Pouzi iba strany, ktore su viditelne v texte so znacenkou [strana X].
-                Ak si nie si isty, vrat aspon najrelevantnejsiu jednu stranu. (štruktúra citovane_zdroje: 1, 2, 3 ...).
+                Pouzi iba zdroje, ktore su viditelne v texte so znacenkou [zdroj D1:1].
+                Ak si nie si isty, vrat aspon najrelevantnejsi jeden zdroj. Pouzi format ["D1:1", "D2:5"].
 
                 Vstupne LO:
                 {lo_summary_text}
@@ -107,7 +109,7 @@ Vyučovací materiál:
 
                 Vrat LEN validny JSON ako pole objektov:
                 [
-                    {{"id": 1, "citovane_zdroje": [12, 13]}}
+                    {{"id": 1, "citovane_zdroje": ["D1:12", "D2:13"]}}
                 ]
                 """
             try:

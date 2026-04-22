@@ -1,4 +1,4 @@
-from context_builder import build_page_map, parse_pages
+from context_builder import build_context_for_sources, build_page_map
 from json_load import safe_load_json
 from llm_client import generate_with_retry
 
@@ -154,21 +154,4 @@ def _item_to_text(item):
 
 
 def _build_context_for_item(item, page_map, max_chars=8000):
-    pages = parse_pages(item.get("citovane_zdroje", []))
-    if not pages:
-        return ""
-
-    texts = []
-    total_len = 0
-    for page in pages:
-        txt = page_map.get(page, "")
-        if not txt:
-            continue
-        if total_len + len(txt) > max_chars:
-            remaining = max_chars - total_len
-            if remaining > 200:
-                texts.append(txt[:remaining])
-            break
-        texts.append(txt)
-        total_len += len(txt)
-    return "\n\n".join(texts)
+    return build_context_for_sources(item.get("citovane_zdroje", []), page_map, max_chars=max_chars)

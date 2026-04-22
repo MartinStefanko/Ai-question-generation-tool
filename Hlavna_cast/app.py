@@ -2,8 +2,9 @@ import streamlit as st
 import streamlit.components.v1 as components
 import tempfile
 import os
+import re
 import time
-from text_extraction import pdf_to_text
+from text_extraction import pdfs_to_text
 from lo_pipeline import generate_lo_pipeline
 from item_pipeline import generate_all_items
 from visualization import build_lo_mindmap_html
@@ -42,6 +43,23 @@ def render_list(label, value):
         st.markdown(f"**{label}:** -")
 
 
+def format_source_pages_for_ui(value):
+    pages = []
+    seen = set()
+    for item in to_list(value):
+        matches = re.findall(r"\b[A-Za-z]\w*\s*[:#-]\s*(\d+)\b", item)
+        if matches:
+            candidates = matches
+        else:
+            candidates = re.findall(r"\d+", item)
+        for page in candidates:
+            normalized = str(int(page))
+            if normalized not in seen:
+                pages.append(normalized)
+                seen.add(normalized)
+    return ", ".join(pages)
+
+
 def _read_download_bytes(path):
     if not path or not os.path.exists(path):
         return None
@@ -73,14 +91,14 @@ with tab_domov:
     st.write(
         "Tento nástroj slúži na spracovanie učebného PDF dokumentu a automatické vytvorenie vzdelávacích objektov, "
         "otázok a úloh viazaných na konkrétne časti zdrojového materiálu. Výstupom sú štruktúrované vzdelávacie objekty "
-        "s citovanými zdrojmi, prerekvizitami, otázkami alebo úlohami, odpoveďami, nápovedami a vizualizáciou ich vzťahov."
+        "s citovanými, prerekvizitami, otázkami alebo úlohami, odpoveďami, nápovedami a vizualizáciou ich vzťahov."
     )
 
     st.subheader("Postup spracovania dokumentu")
     st.markdown(
         """
-        1. **Načítanie dokumentu** – používateľ nahrá PDF dokument, ktorý slúži ako vstupný učebný materiál.  
-        2. **Extrakcia textu** – z dokumentu sa získa text po jednotlivých stranách a uloží sa ako základ pre ďalšie spracovanie.  
+        1. **Načítanie dokumentu** – používateľ nahrá jeden alebo viac PDF dokumentov, ktoré slúžia ako vstupný učebný materiál.  
+        2. **Extrakcia textu** – z dokumentov sa získa text po jednotlivých stranách a uloží sa ako základ pre ďalšie spracovanie.  
         3. **Generovanie vzdelávacích objektov** – z extrahovaného textu sa vytvoria vzdelávacie objekty s názvom, Bloomovou úrovňou, odporúčanými aktivitami, odporúčanými zadaniami a citovanými zdrojmi.  
         4. **Zlúčenie a doplnenie LO** – podobné vzdelávacie objekty sa zoskupia, zoradia a doplnia sa medzi nimi prerekvizity.  
         5. **Validácia a evaluácia LO** – kontroluje sa formálna správnosť výstupu, pokrytie tém, relevantnosť voči dokumentu a vernosť voči zdrojovému textu.  
@@ -92,14 +110,14 @@ with tab_domov:
 
     st.write(
         "Generovanie nástroja je postavené na veľkom jazykovom modeli, pričom každý vzdelávací objekt aj každá vygenerovaná položka sú "
-        "naviazané na citované strany dokumentu. Nástroj priebežne kontroluje a filtruje vygenerovaný obsah, "
+        "naviazané na citované zdroje vo formáte napríklad D1:4 alebo D2:7. Nástroj priebežne kontroluje a filtruje vygenerovaný obsah, "
         "aby výsledok čo najlepšie zodpovedal reálnemu obsahu nahraného materiálu. Výstupom je prehľad učebného obsahu, ktorý môže slúžiť ako podpora pri učení alebo príprave na skúšku."
     )
 
 
 
-if "pdf_path" not in st.session_state:
-    st.session_state.pdf_path = None
+if "pdf_paths" not in st.session_state:
+    st.session_state.pdf_paths = []
 if "segments" not in st.session_state:
     st.session_state.segments = None
 if "los" not in st.session_state:
@@ -126,11 +144,15 @@ if "item_timing_report" not in st.session_state:
     st.session_state.item_timing_report = None
 
 with tab_dokument:
-    st.write("Nahrajte PDF dokument, ktorý bude slúžiť ako vstupný učebný materiál.")
-    uploaded_file = st.file_uploader("Miesto pre nahratie PDF", type=["pdf"])
+    st.write("Nahrajte jeden alebo viac PDF dokumentov, ktoré budú slúžiť ako vstupný učebný materiál.")
+    uploaded_files = st.file_uploader(
+        "Miesto pre nahratie PDF",
+        type=["pdf"],
+        accept_multiple_files=True,
+    )
 
-    if uploaded_file is not None:
-        st.success(f"Nahraný súbor: {uploaded_file.name}")
+    if uploaded_files:
+        st.success(f"Nahrané súbory: {', '.join(file.name for file in uploaded_files)}")
 
         if st.button("Spustiť extrakciu textu", use_container_width=False):
             st.session_state.los = None
@@ -145,17 +167,27 @@ with tab_dokument:
             st.session_state.lo_timing_report = None
             st.session_state.item_timing_report = None
 
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
-                f.write(uploaded_file.getbuffer())
-                st.session_state.pdf_path = f.name
+            pdf_inputs = []
+            st.session_state.pdf_paths = []
+            for uploaded_file in uploaded_files:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as f:
+                    f.write(uploaded_file.getbuffer())
+                    st.session_state.pdf_paths.append(f.name)
+                    pdf_inputs.append({
+                        "path": f.name,
+                        "name": uploaded_file.name,
+                    })
 
             t0 = time.perf_counter()
             with st.spinner("Spracovávam dokument..."):
-                st.session_state.segments = pdf_to_text(st.session_state.pdf_path)
+                st.session_state.segments = pdfs_to_text(pdf_inputs)
             extraction_time = time.perf_counter() - t0
             save_extracted_material_txt(st.session_state.segments, OUTPUT_DIR)
 
-            st.success(f"Extrakcia dokončená. Čas extrakcie textu: {extraction_time:.2f} s")
+            st.success(
+                f"Extrakcia dokončená. Spracované PDF: {len(pdf_inputs)}. "
+                f"Čas extrakcie textu: {extraction_time:.2f} s"
+            )
 
             with st.spinner("Generujem vzdelávacie objekty..."):
                 los, lo_timing_report = generate_lo_pipeline(
@@ -270,7 +302,8 @@ with tab_lo:
 
                 render_list("Odporúčané aktivity", obj.get("odporúčané_aktivity"))
                 render_list("Odporúčané zadania", obj.get("odporúčané_zadania"))
-                st.markdown(f"**Citované zdroje:** {', '.join(to_list(obj.get('citovane_zdroje'))) or '-'}")
+                st.markdown(f"**Zdroj:** {', '.join(to_list(obj.get('zdroj'))) or '-'}")
+                st.markdown(f"**Citované zdroje:** {format_source_pages_for_ui(obj.get('citovane_zdroje')) or '-'}")
 
 
 with tab_otazky:
@@ -316,7 +349,8 @@ with tab_otazky:
                 with st.expander("Zobraziť nápovedu", expanded=False):
                     render_list("Nápoveda", it.get("napoveda"))
                 render_list("Zdôvodnenie hodnotenia", zdovodnenie)
-                st.markdown(f"**Citované zdroje:** {', '.join(to_list(it.get('citovane_zdroje'))) or '-'}")
+                st.markdown(f"**Zdroj:** {', '.join(to_list(it.get('zdroj'))) or '-'}")
+                st.markdown(f"**Citované zdroje:** {format_source_pages_for_ui(it.get('citovane_zdroje')) or '-'}")
 
 with tab_viz:
     if not st.session_state.get("los"):

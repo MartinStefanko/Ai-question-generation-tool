@@ -15,6 +15,7 @@ Aplikácia je vytvorená v jazyku Python a používa webové rozhranie Streamlit
 - validácia a filtrácia vygenerovaných výstupov,
 - generovanie otázok a praktických úloh,
 - generovanie odpovedí a nápovedí,
+- citovanie strán odkiaľ otázky vznikli,
 - export výsledkov do JSON, TXT a PDF súborov,
 - vizualizácia vzťahov medzi vzdelávacími objektmi.
 
@@ -123,8 +124,8 @@ Túto adresu otvorte vo webovom prehliadači.
 
 1. Otvorte aplikáciu v prehliadači.
 2. Prejdite na časť určenú na nahratie dokumentu.
-3. Nahrajte PDF dokument.
-4. Spustite extrakciu a spracovanie dokumentu.
+3. Nahrajte jeden alebo viac PDF dokumentov.
+4. Spustite extrakciu a spracovanie dokumentov.
 5. Aplikácia automaticky vygeneruje vzdelávacie objekty.
 6. Následne sa vygenerujú otázky, úlohy, odpovede a nápovedy.
 7. Výsledky je možné zobraziť v aplikácii a stiahnuť vo výstupných formátoch.

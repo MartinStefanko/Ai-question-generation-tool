@@ -1,7 +1,15 @@
 import time
 import re
 
-from context_builder import build_page_map, build_context_for_lo, parse_pages
+from context_builder import (
+    build_allowed_source_refs,
+    build_page_map,
+    build_context_for_lo,
+    build_source_name_map,
+    format_segment_label,
+    parse_source_refs,
+    resolve_source_names,
+)
 from item_answerability import analyze_item_answerability
 from item_faithfulness import analyze_item_faithfulness
 from item_relevance_to_lo import analyze_item_relevance_to_lo
@@ -130,7 +138,7 @@ Každý objekt musí mať:
 - "otazka": zadanie otázky alebo úlohy,
 - "odpoved": správna odpoveď alebo referenčné riešenie; ak ide o praktickú Python úlohu, pole MUSÍ obsahovať aj samotný kód riešenia, aby si ho používateľ vedel skopírovať,
 - "napoveda": krátka pomocná stopa pre študenta, NESMIE obsahovať finálnu odpoveď ani kľúčový výsledok. Napoveda má len nasmerovať, čo si má študent v texte pozrieť alebo aký postup zvoliť.
-- "citovane_zdroje": zoznam čísel strán ako textových reťazcov, napr. ["12","13"].
+- "citovane_zdroje": zoznam zdrojov vo formáte dokument:strana ako textové reťazce, napr. ["D1:12","D2:13"].
 - "jazyk": napr. "python" alebo prázdny reťazec.
 - "kod_riesenia": samostatný kód bez markdown ohraničenia alebo prázdny reťazec.
 - "execution_mode": "stdin_stdout", "function" alebo prázdny reťazec.
@@ -249,9 +257,15 @@ LEN JSON pole bez ďalšieho textu.
 def _item_sort_key(item, lo_order):
     lo_id = item.get("lo_id")
     lo_pos = lo_order.get(lo_id, float("inf"))
-    pages = parse_pages(item.get("citovane_zdroje", []))
-    first_page = pages[0] if pages else float("inf")
-    return (lo_pos, first_page, item.get("id", float("inf")))
+    refs = parse_source_refs(item.get("citovane_zdroje", []))
+    source_id, first_page = refs[0] if refs else ("", float("inf"))
+    return (lo_pos, source_id or "", first_page, item.get("id", float("inf")))
+
+
+def _attach_source_names(items, source_name_map):
+    for item in items:
+        item["zdroj"] = resolve_source_names(item.get("citovane_zdroje", []), source_name_map)
+    return items
 
 
 def generate_all_items(
@@ -273,6 +287,7 @@ def generate_all_items(
     evaluation_model = evaluation_model or model
 
     page_map = build_page_map(segmenty)
+    source_name_map = build_source_name_map(segmenty)
     document_type_info = classify_document_for_python_items(
         segmenty,
         client=client,
@@ -335,6 +350,7 @@ def generate_all_items(
                     "napoveda": raw.get("napoveda", ""),
                     "citovane_zdroje": raw.get("citovane_zdroje", [])
                 }
+                record["zdroj"] = resolve_source_names(record.get("citovane_zdroje", []), source_name_map)
                 created_batch_items.append(record)
                 all_items.append(record)
                 next_item_id += 1
@@ -381,9 +397,10 @@ def generate_all_items(
     all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
     for i, item in enumerate(all_items, start=1):
         item["id"] = i
+    _attach_source_names(all_items, source_name_map)
 
     evaluation_start_reports = time.perf_counter()
-    allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+    allowed_pages = build_allowed_source_refs(segmenty)
     valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
     item_validation_report = validate_items(
         all_items,
@@ -421,6 +438,7 @@ def generate_all_items(
         correctness_report,
     )
     normalized_items = _normalize_accepted_items(accepted_items, valid_lo_ids)
+    _attach_source_names(normalized_items, source_name_map)
 
     if output_dir:
         save_item_validation_report(item_validation_report, output_dir)
@@ -762,6 +780,6 @@ def _build_full_document_text(segmenty):
         if not text:
             continue
         page = seg.get("page")
-        block = f"[strana {page}]\n{text}" if page is not None else text
+        block = f"[{format_segment_label(seg)}]\n{text}" if page is not None else text
         parts.append(block)
     return "\n\n".join(parts)

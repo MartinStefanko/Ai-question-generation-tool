@@ -1,6 +1,6 @@
 import json
 
-from context_builder import parse_pages
+from context_builder import parse_source_ref_strings
 
 
 REQUIRED_ITEM_FIELDS = {
@@ -46,7 +46,7 @@ def validate_items(data, allowed_pages=None, valid_lo_ids=None):
         return report
 
     report["stats"]["total"] = len(data)
-    known_pages = {int(p) for p in (allowed_pages or []) if p is not None}
+    known_sources = {str(p).strip() for p in (allowed_pages or []) if str(p).strip()}
     known_lo_ids = set(valid_lo_ids or [])
     item_ids = []
 
@@ -100,7 +100,7 @@ def validate_items(data, allowed_pages=None, valid_lo_ids=None):
             item_valid = False
         if not _validate_non_empty_value(item.get("napoveda"), prefix, "napoveda", report):
             item_valid = False
-        if not _validate_sources(item.get("citovane_zdroje"), prefix, report, known_pages):
+        if not _validate_sources(item.get("citovane_zdroje"), prefix, report, known_sources):
             item_valid = False
 
         if item_valid:
@@ -149,7 +149,7 @@ def _validate_non_empty_value(value, prefix, field_name, report):
     return True
 
 
-def _validate_sources(value, prefix, report, known_pages):
+def _validate_sources(value, prefix, report, known_sources):
     if not isinstance(value, list):
         report["errors"].append(f"{prefix} ma nespravny typ pola 'citovane_zdroje' (ocakavany zoznam).")
         return False
@@ -170,18 +170,18 @@ def _validate_sources(value, prefix, report, known_pages):
         )
         return False
 
-    pages = parse_pages(value)
-    if not pages:
+    refs = parse_source_ref_strings(value)
+    if not refs:
         report["errors"].append(
-            f"{prefix} ma v poli 'citovane_zdroje' neplatny format. Ocakavaju sa cisla stran."
+            f"{prefix} ma v poli 'citovane_zdroje' neplatny format. Ocakava sa format D1:1 alebo cisla stran."
         )
         return False
 
-    if known_pages:
-        invalid_pages = sorted(set(pages) - known_pages)
-        if invalid_pages:
+    if known_sources:
+        invalid_refs = sorted(set(refs) - known_sources)
+        if invalid_refs:
             report["errors"].append(
-                f"{prefix} odkazuje na neexistujuce strany: {', '.join(str(p) for p in invalid_pages)}."
+                f"{prefix} odkazuje na neexistujuce zdroje: {', '.join(str(p) for p in invalid_refs)}."
             )
             return False
 

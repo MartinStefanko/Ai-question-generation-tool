@@ -1,6 +1,7 @@
 import json
 import os
 
+from context_builder import format_segment_label, make_source_ref
 from visualization import visualize_to_png
 
 
@@ -46,6 +47,7 @@ def save_learning_objects_json_txt(los, output_dir, all_los=None):
         else:
             prereq_str = "" if prereq is None else str(prereq)
         lines.append(f"prerekvizity: {prereq_str}")
+        lines.append(f"zdroj: {_to_text(obj.get('zdroj'))}")
 
         cit = obj.get("citovane_zdroje", [])
         if isinstance(cit, list):
@@ -149,6 +151,7 @@ def save_learning_objects_pdf(los, output_dir):
             ("Odporúčané aktivity", _to_text(lo.get("odporúčané_aktivity")) or "-"),
             ("Odporúčané zadania", _to_text(lo.get("odporúčané_zadania")) or "-"),
             ("Prerekvizity", _to_text(lo.get("prerekvizity")) or "-"),
+            ("Zdroj", _to_text(lo.get("zdroj")) or "-"),
             ("Citované zdroje", _to_text(lo.get("citovane_zdroje")) or "-"),
         ]
 
@@ -167,8 +170,9 @@ def save_extracted_material_txt(segmenty, output_dir):
     lines = []
     for seg in segmenty:
         page = seg.get("page", "-")
+        source_ref = make_source_ref(seg.get("source_id"), page)
         text = seg.get("text", "")
-        lines.append(f"=== STRANA {page} ===")
+        lines.append(f"=== ZDROJ {source_ref} | {format_segment_label(seg)} ===")
         lines.append(str(text))
         lines.append("")
 
@@ -628,6 +632,7 @@ def save_questions_json_txt(items, output_dir, all_items=None):
         items_txt_lines.append(f"kod_riesenia: {it.get('kod_riesenia', '')}")
         items_txt_lines.append(f"test_cases: {it.get('test_cases', [])}")
         items_txt_lines.append(f"napoveda: {it.get('napoveda')}")
+        items_txt_lines.append(f"zdroj: {_to_text(it.get('zdroj'))}")
         hodnotenie = it.get("hodnotenie", {})
         if isinstance(hodnotenie, dict):
             skore = hodnotenie.get("skore")
@@ -739,6 +744,7 @@ def save_questions_pdf(items, output_dir):
             ("Otázka", _to_text(item.get("otazka")) or "-"),
             ("Odpoveď", _to_text(item.get("odpoved")) or "-"),
             ("Nápoveda", _to_text(item.get("napoveda")) or "-"),
+            ("Zdroj", _to_text(item.get("zdroj")) or "-"),
             ("Citované zdroje", _to_text(item.get("citovane_zdroje")) or "-"),
         ]
 

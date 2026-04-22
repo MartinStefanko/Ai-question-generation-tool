@@ -1,7 +1,7 @@
 import time
 import re
 
-from context_builder import parse_pages
+from context_builder import build_allowed_source_refs, build_source_name_map, parse_source_refs, resolve_source_names
 from lo_clustering import cluster_by_core
 from lo_faithfulness import analyze_lo_faithfulness
 from lo_generation import generate_learning_objects
@@ -22,9 +22,15 @@ LO_MIN_FAITHFULNESS_SCORE = 3
 
 
 def _lo_page_sort_key(lo):
-    pages = parse_pages(lo.get("citovane_zdroje", []))
-    first_page = pages[0] if pages else float("inf")
-    return (first_page, lo.get("id", float("inf")))
+    refs = parse_source_refs(lo.get("citovane_zdroje", []))
+    source_id, first_page = refs[0] if refs else ("", float("inf"))
+    return (source_id or "", first_page, lo.get("id", float("inf")))
+
+
+def _attach_source_names(los, source_name_map):
+    for lo in los:
+        lo["zdroj"] = resolve_source_names(lo.get("citovane_zdroje", []), source_name_map)
+    return los
 
 
 def generate_lo_pipeline(
@@ -40,6 +46,7 @@ def generate_lo_pipeline(
 ):
     generation_model = generation_model or model
     prerequisites_model = prerequisites_model or model
+    source_name_map = build_source_name_map(segmenty)
 
     generation_start = time.perf_counter()
     los = generate_learning_objects(
@@ -49,6 +56,7 @@ def generate_lo_pipeline(
         client=client,
         verbose=verbose
     )
+    _attach_source_names(los, source_name_map)
     generation_seconds = time.perf_counter() - generation_start
     evaluation_seconds = 0.0
     timing_report = {
@@ -99,9 +107,10 @@ def generate_lo_pipeline(
         obj["id"] = i
 
     los = infer_prerequisites(los, model=prerequisites_model, client=client, verbose=verbose)
+    _attach_source_names(los, source_name_map)
     generation_seconds += time.perf_counter() - generation_start
 
-    allowed_pages = {seg.get("page") for seg in segmenty if seg.get("page") is not None}
+    allowed_pages = build_allowed_source_refs(segmenty)
     evaluation_start = time.perf_counter()
     validation_report = validate_learning_objects(los, allowed_pages=allowed_pages)
     coverage_report = analyze_topic_coverage(
@@ -125,6 +134,7 @@ def generate_lo_pipeline(
     )
     accepted_los = _filter_learning_objects_variant_b(los, validation_report, faithfulness_report)
     normalized_los, lo_id_map = _normalize_learning_object_ids(accepted_los)
+    _attach_source_names(normalized_los, source_name_map)
     if output_dir:
         save_lo_validation_report(validation_report, output_dir)
         save_document_topics_txt(coverage_report.get("topics", []), output_dir)
@@ -177,7 +187,7 @@ def _filter_learning_objects_variant_b(los, validation_report, faithfulness_repo
         lo_id = lo.get("id")
         if lo_id in invalid_lo_ids:
             continue
-        if not parse_pages(lo.get("citovane_zdroje", [])):
+        if not parse_source_refs(lo.get("citovane_zdroje", [])):
             continue
         faithfulness_score = faithfulness_by_id.get(lo_id)
         if faithfulness_score is None or faithfulness_score < LO_MIN_FAITHFULNESS_SCORE:
