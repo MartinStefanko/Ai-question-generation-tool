@@ -25,6 +25,7 @@ Pred spustením projektu je potrebné mať nainštalované:
 
 - odporúčaná verzia: Python 3.12,
 - nástroj `pip`,
+- internetové pripojenie,
 - API kľúč pre Gemini,
 - vo Windowse: Microsoft Visual C++ v14 Redistributable, odporúčané nainštalovať verziu x64 aj x86.
 
