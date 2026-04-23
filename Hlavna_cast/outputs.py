@@ -18,15 +18,47 @@ def _to_text(value):
     return str(value).strip()
 
 
+def _normalize_list(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, (int, float, bool)):
+        return [value]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _normalize_lo_for_export(obj):
+    return {
+        "id": obj.get("id"),
+        "vzdelavaci_objekt": obj.get("vzdelávací_objekt", obj.get("vzdelavaci_objekt", "")),
+        "bloom_level": obj.get("bloom_level", ""),
+        "odporucane_aktivity": _normalize_list(
+            obj.get("odporúčané_aktivity", obj.get("odporucane_aktivity", []))
+        ),
+        "odporucane_zadania": obj.get("odporúčané_zadania", obj.get("odporucane_zadania", "")),
+        "citovane_zdroje": _normalize_list(
+            obj.get("citovane_zdroje", obj.get("citované_zdroje", []))
+        ),
+        "zdroj": _normalize_list(obj.get("zdroj", [])),
+        "prerekvizity": _normalize_list(obj.get("prerekvizity", [])),
+    }
+
+
 def save_learning_objects_json_txt(los, output_dir, all_los=None):
     os.makedirs(output_dir, exist_ok=True)
 
     out_path = os.path.join(output_dir, "learning_objects.json")
-    _write_json(out_path, los)
+    export_los = [_normalize_lo_for_export(obj) for obj in los]
+    _write_json(out_path, export_los)
 
     if all_los is not None:
         all_out_path = os.path.join(output_dir, "learning_objects_all.json")
-        _write_json(all_out_path, all_los)
+        export_all_los = [_normalize_lo_for_export(obj) for obj in all_los]
+        _write_json(all_out_path, export_all_los)
 
     lines = []
     for obj in los:

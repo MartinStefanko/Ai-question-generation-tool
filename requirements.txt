@@ -1,11 +1,11 @@
 python-dotenv
 google-genai
 matplotlib
-networkx 
+networkx
 pypdf
 torch
 torchvision
-pymupdf 
+pymupdf
 easyocr
 numpy
 opencv-python

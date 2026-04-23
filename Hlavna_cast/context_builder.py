@@ -32,17 +32,26 @@ def format_segment_label(seg):
 
 def build_page_map(segmenty):
     page_map = {}
+    source_ids = {
+        get_segment_source_id(seg)
+        for seg in segmenty
+        if seg.get("page") is not None
+    }
+    allow_page_number_fallback = len(source_ids) <= 1
+    page_map["__allow_page_number_fallback__"] = allow_page_number_fallback
+
     for seg in segmenty:
         page = seg.get("page")
-        text = seg.get("text", "")
+        text = str(seg.get("text", "") or "").strip()
         if page is not None:
             source_id = get_segment_source_id(seg)
             source_ref = make_source_ref(source_id, page)
-            page_map[source_ref] = text
-            page_map[(source_id, int(page))] = text
-            if not source_id:
-                page_map[int(page)] = text
-            page_map.setdefault(int(page), text)
+            page_key = int(page)
+            page_map[source_ref] = _append_page_text(page_map.get(source_ref, ""), text)
+            page_map[(source_id, page_key)] = _append_page_text(page_map.get((source_id, page_key), ""), text)
+
+            if allow_page_number_fallback:
+                page_map[page_key] = _append_page_text(page_map.get(page_key, ""), text)
     return page_map
 
 
@@ -161,28 +170,40 @@ def build_context_for_sources(citovane_zdroje, page_map, max_chars=8000):
     if not refs:
         return ""
 
+    allow_page_number_fallback = bool(page_map.get("__allow_page_number_fallback__", False))
     texts = []
     total_len = 0
     for source_id, page in refs:
-        txt = (
-            page_map.get((source_id, page))
-            or page_map.get(make_source_ref(source_id, page))
-            or page_map.get(page)
-            or ""
-        )
+        txt = page_map.get((source_id, page)) or page_map.get(make_source_ref(source_id, page)) or ""
+        if not txt and allow_page_number_fallback:
+            txt = page_map.get(page) or ""
         if not txt:
             continue
-        if total_len + len(txt) > max_chars:
+        block = f"[zdroj {make_source_ref(source_id, page)}]\n{txt}"
+        if total_len + len(block) > max_chars:
             remaining = max_chars - total_len
             if remaining > 200:
-                texts.append(txt[:remaining])
+                texts.append(block[:remaining])
                 total_len += remaining
             break
-        texts.append(txt)
-        total_len += len(txt)
+        texts.append(block)
+        total_len += len(block)
 
     return "\n\n".join(texts)
 
 
 def build_context_for_lo(lo, page_map, max_chars=8000):
     return build_context_for_sources(lo.get("citovane_zdroje", []), page_map, max_chars=max_chars)
+
+
+def _append_page_text(existing, new_text):
+    new_text = str(new_text or "").strip()
+    if not new_text:
+        return str(existing or "").strip()
+
+    existing = str(existing or "").strip()
+    if not existing:
+        return new_text
+    if new_text == existing:
+        return existing
+    return f"{existing}\n\n{new_text}"
