@@ -14,6 +14,7 @@ def analyze_item_faithfulness(
     verbose: bool = True,
     batch_size: int = 10,
     max_batch_attempts: int = 2,
+    document_language: str = "sk",
 ):
     report = {
         "stats": {
@@ -65,6 +66,7 @@ def analyze_item_faithfulness(
                 client=client,
                 model=model,
                 verbose=verbose,
+                document_language=document_language,
             )
             if evaluations:
                 break
@@ -92,7 +94,7 @@ def analyze_item_faithfulness(
     return report
 
 
-def _evaluate_item_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True):
+def _evaluate_item_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True, document_language: str = "sk"):
     parts = []
     for item in batch:
         parts.append(
@@ -102,7 +104,24 @@ def _evaluate_item_faithfulness_batch(batch, client=None, model: str = FAITHFULN
         )
     joined = "\n\n-----\n\n".join(parts)
 
-    prompt = f"""
+    if document_language == "en":
+        prompt = f"""
+Assess the faithfulness of each answer against its source.
+
+Score 1-5:
+1 = the answer contains unsupported claims
+5 = the answer is fully supported by the source
+
+Records:
+{joined}
+
+Return ONLY valid JSON as an array of objects:
+[
+  {{"item_id": 1, "skore": 1, "zdovodnenie": "short justification in English"}}
+]
+"""
+    else:
+        prompt = f"""
 Posud faithfulness odpovede voci zdroju pre kazdy zaznam.
 
 Skore 1-5:

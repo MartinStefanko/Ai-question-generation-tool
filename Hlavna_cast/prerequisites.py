@@ -3,7 +3,7 @@ from json_load import safe_load_json
 from llm_client import generate_with_retry
 
 
-def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, verbose=True):
+def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, verbose=True, document_language="sk"):
     if not lo_list:
         return lo_list
 
@@ -26,6 +26,7 @@ def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, ver
             model=model,
             client=client,
             verbose=verbose,
+            document_language=document_language,
         )
         for obj in group:
             mapping[obj.get("id")] = group_mapping.get(obj.get("id"), [])
@@ -44,7 +45,7 @@ def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, ver
     return lo_list
 
 
-def _infer_prerequisites_for_group(group, signature, model="gemini-2.5-flash-lite", client=None, verbose=True):
+def _infer_prerequisites_for_group(group, signature, model="gemini-2.5-flash-lite", client=None, verbose=True, document_language="sk"):
     summary_lines = []
     for obj in group:
         acts = obj.get("odporúčané_aktivity", [])
@@ -60,7 +61,20 @@ def _infer_prerequisites_for_group(group, signature, model="gemini-2.5-flash-lit
         )
     summary_text = "\n".join(summary_lines)
 
-    prompt = f"""
+    if document_language == "en":
+        prompt = f"""
+You are a teacher. Infer prerequisite relationships between the following learning objectives.
+All of these objectives belong to the same document group: {list(signature)}.
+Return JSON: an array of objects {{"id": number, "prerekvizity": [list of ids that must come before it]}}.
+Do not create cycles.
+Use only ids from the list below.
+Keep the JSON field name exactly as "prerekvizity".
+
+Learning objectives:
+{summary_text}
+"""
+    else:
+        prompt = f"""
 Si ucitel. Pre nasledujuci zoznam vzdelavacich cielov navrhni dopln vsetky prerekvizity medzi nimi.
 Vsetky tieto ciele patria do rovnakej skupiny dokumentov: {list(signature)}.
 Vrat JSON: pole objektov {{"id": cislo, "prerekvizity": [zoznam id, ktore musia byt predtym]}}.

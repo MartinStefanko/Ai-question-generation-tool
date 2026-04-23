@@ -14,6 +14,7 @@ def analyze_lo_faithfulness(
     verbose: bool = True,
     batch_size: int = 20,
     max_batch_attempts: int = 2,
+    document_language: str = "sk",
 ):
     report = {
         "stats": {
@@ -61,6 +62,7 @@ def analyze_lo_faithfulness(
                 client=client,
                 model=model,
                 verbose=verbose,
+                document_language=document_language,
             )
             if evaluations:
                 break
@@ -83,7 +85,7 @@ def analyze_lo_faithfulness(
     return report
 
 
-def _evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True):
+def _evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True, document_language: str = "sk"):
     parts = []
     for item in batch:
         parts.append(
@@ -93,7 +95,24 @@ def _evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNES
         )
     joined = "\n\n-----\n\n".join(parts)
 
-    prompt = f"""
+    if document_language == "en":
+        prompt = f"""
+Assess the faithfulness of each learning objective against its source.
+
+Score 1-5:
+1 = the learning objective is not supported by the source
+5 = the learning objective is fully supported by the source
+
+Records:
+{joined}
+
+Return ONLY valid JSON as an array of objects:
+[
+  {{"lo_id": 1, "skore": 1, "zdovodnenie": "short justification in English"}}
+]
+"""
+    else:
+        prompt = f"""
 Posud faithfulness LO voci zdroju pre kazdy zaznam.
 
 Skore 1-5:

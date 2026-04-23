@@ -2,6 +2,7 @@ import time
 import re
 
 from context_builder import build_allowed_source_refs, build_source_name_map, parse_source_refs, resolve_source_names
+from document_language import detect_document_language
 from lo_clustering import cluster_by_core
 from lo_faithfulness import analyze_lo_faithfulness
 from lo_generation import generate_learning_objects
@@ -47,6 +48,13 @@ def generate_lo_pipeline(
     generation_model = generation_model or model
     prerequisites_model = prerequisites_model or model
     source_name_map = build_source_name_map(segmenty)
+    language_info = detect_document_language(
+        segmenty,
+        client=client,
+        model=generation_model,
+        verbose=verbose,
+    )
+    document_language = language_info.get("language", "sk")
 
     generation_start = time.perf_counter()
     los = generate_learning_objects(
@@ -54,7 +62,8 @@ def generate_lo_pipeline(
         batch_size=batch_size,
         model=generation_model,
         client=client,
-        verbose=verbose
+        verbose=verbose,
+        document_language=document_language,
     )
     _attach_source_names(los, source_name_map)
     generation_seconds = time.perf_counter() - generation_start
@@ -106,7 +115,13 @@ def generate_lo_pipeline(
     for i, obj in enumerate(los, start=1):
         obj["id"] = i
 
-    los = infer_prerequisites(los, model=prerequisites_model, client=client, verbose=verbose)
+    los = infer_prerequisites(
+        los,
+        model=prerequisites_model,
+        client=client,
+        verbose=verbose,
+        document_language=document_language,
+    )
     _attach_source_names(los, source_name_map)
     generation_seconds += time.perf_counter() - generation_start
 
@@ -131,6 +146,7 @@ def generate_lo_pipeline(
         client=client,
         verbose=verbose,
         batch_size=batch_size,
+        document_language=document_language,
     )
     accepted_los = _filter_learning_objects_variant_b(los, validation_report, faithfulness_report)
     normalized_los, lo_id_map = _normalize_learning_object_ids(accepted_los)
@@ -150,6 +166,8 @@ def generate_lo_pipeline(
         "details": {
             "los_count_all": len(los),
             "los_count_accepted": len(normalized_los),
+            "document_language": document_language,
+            "document_language_reason": language_info.get("reason", ""),
         },
     }
     if output_dir:
@@ -170,6 +188,7 @@ def generate_lo_pipeline(
     if return_metrics:
         timing_report["all_los"] = los
         timing_report["accepted_lo_id_map"] = lo_id_map
+        timing_report["language_info"] = language_info
         return normalized_los, timing_report
     return normalized_los
 

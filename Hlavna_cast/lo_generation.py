@@ -5,7 +5,14 @@ from json_load import safe_load_json
 from llm_client import generate_with_retry
 
 
-def generate_learning_objects(segmenty, batch_size=10, model="gemini-2.5-flash-lite", client=None, verbose=True):
+def generate_learning_objects(
+    segmenty,
+    batch_size=10,
+    model="gemini-2.5-flash-lite",
+    client=None,
+    verbose=True,
+    document_language="sk",
+):
     vsetky_lo = []
     next_id = 1
 
@@ -22,23 +29,7 @@ def generate_learning_objects(segmenty, batch_size=10, model="gemini-2.5-flash-l
             parts.append(f"[{format_segment_label(seg)}]\n{seg.get('text', '')}")
         combined_text = "\n\n".join(parts)
 
-        prompt = f"""
-Si učiteľ. Na základe nasledujúceho materiálu extrahuj merateľné vzdelávacie ciele.
-
-Output only valid JSON: an array of objects with the following fields:
-id (jedinečný identifikátor 1, 2, 3...),
-vzdelávací_objekt (hlavný bod/cieľ, najviac dve slová),
-bloom_level (jedno z: Zapamätať si, Pochopiť, Aplikovať, Analyzovať, Hodnotiť, Vytvoriť),
-odporúčané_aktivity (krátky zoznam),
-odporúčané_zadania - v jednej úlohe maximálne jedno aktívne sloveso a slovesá nech sú v imperatíve (krátky popis) (vystup ma byt ako suvisly text ziadne [] a tak),
-citovane_zdroje - každý vzdelávací objekt MUSÍ mať citovaný konkrétny dokument a stranu. Toto pole nesmie byť prázdne. Použi formát ["D1:1", "D2:5"] podľa značiek dokumentov v texte.
-
-V prípade, že identifikuješ časť materiálu ktorá má štruktúru začiatku dokumentu (napríklad obsah dokumentu, úvod atď.)
-tak túto časť ignoruj a nevytváraj pre ňu žiadne vzdelávacie objekty.
-
-Vyučovací materiál:
-\"\"\"{combined_text}\"\"\"
-"""
+        prompt = _build_lo_generation_prompt(combined_text, document_language)
 
         response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
         response_text = response.text if response else ""
@@ -96,22 +87,7 @@ Vyučovací materiál:
                 )
             lo_summary_text = "\n".join(lo_summary)
 
-            prompt_missing = f"""
-                Si ucitel. Doplň pole citovane_zdroje pre nasledujuce LO, kde je prazdne. 
-                Pouzi iba zdroje, ktore su viditelne v texte so znacenkou [zdroj D1:1].
-                Ak si nie si isty, vrat aspon najrelevantnejsi jeden zdroj. Pouzi format ["D1:1", "D2:5"].
-
-                Vstupne LO:
-                {lo_summary_text}
-
-                Text materialu:
-                \"\"\"{batch_text_with_pages}\"\"\"
-
-                Vrat LEN validny JSON ako pole objektov:
-                [
-                    {{"id": 1, "citovane_zdroje": ["D1:12", "D2:13"]}}
-                ]
-                """
+            prompt_missing = _build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language)
             try:
                 response_missing = generate_with_retry(prompt_missing, client=client, model=model, verbose=verbose)
                 parsed_missing = safe_load_json(response_missing.text if response_missing else "")
@@ -170,3 +146,80 @@ Vyučovací materiál:
         print(f"Celkový čas generovania: {end_total - start_total:.2f} s")
 
     return vsetky_lo
+
+
+def _build_lo_generation_prompt(combined_text, document_language):
+    if document_language == "en":
+        return f"""
+You are a teacher. Extract measurable learning objectives from the following material.
+
+Return ONLY valid JSON: an array of objects with the following fields:
+id (unique identifier 1, 2, 3...),
+vzdelávací_objekt (main point/objective, at most two words; keep the field name exactly as written),
+bloom_level (must be one of these exact Slovak values: Zapamätať si, Pochopiť, Aplikovať, Analyzovať, Hodnotiť, Vytvoriť),
+odporúčané_aktivity (short list; keep the field name exactly as written),
+odporúčané_zadania (short assignment text with at most one active verb in imperative form; plain text, not a JSON list),
+citovane_zdroje (must cite a specific document and page; use format ["D1:1", "D2:5"]).
+
+Important:
+- Keep JSON field names exactly as specified.
+- Keep bloom_level values in the Slovak controlled vocabulary above.
+- Write the content of the learning objective, activities, and assignments in English because the source document is in English.
+- If you identify a section that looks like front matter (table of contents, introduction, etc.), ignore it and create no learning objectives for it.
+
+Teaching material:
+\"\"\"{combined_text}\"\"\"
+"""
+    return f"""
+Si učiteľ. Na základe nasledujúceho materiálu extrahuj merateľné vzdelávacie ciele.
+
+Output only valid JSON: an array of objects with the following fields:
+id (jedinečný identifikátor 1, 2, 3...),
+vzdelávací_objekt (hlavný bod/cieľ, najviac dve slová),
+bloom_level (jedno z: Zapamätať si, Pochopiť, Aplikovať, Analyzovať, Hodnotiť, Vytvoriť),
+odporúčané_aktivity (krátky zoznam),
+odporúčané_zadania - v jednej úlohe maximálne jedno aktívne sloveso a slovesá nech sú v imperatíve (krátky popis) (vystup ma byt ako suvisly text ziadne [] a tak),
+citovane_zdroje - každý vzdelávací objekt MUSÍ mať citovaný konkrétny dokument a stranu. Toto pole nesmie byť prázdne. Použi formát ["D1:1", "D2:5"] podľa značiek dokumentov v texte.
+
+V prípade, že identifikuješ časť materiálu ktorá má štruktúru začiatku dokumentu (napríklad obsah dokumentu, úvod atď.)
+tak túto časť ignoruj a nevytváraj pre ňu žiadne vzdelávacie objekty.
+
+Vyučovací materiál:
+\"\"\"{combined_text}\"\"\"
+"""
+
+
+def _build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language):
+    if document_language == "en":
+        return f"""
+You are a teacher. Fill the field citovane_zdroje for the following learning objectives where it is missing.
+Use only sources visible in the text with labels like [zdroj D1:1].
+If you are unsure, return at least the single most relevant source. Use the format ["D1:1", "D2:5"].
+
+Input learning objectives:
+{lo_summary_text}
+
+Material text:
+\"\"\"{batch_text_with_pages}\"\"\"
+
+Return ONLY valid JSON as an array of objects:
+[
+    {{"id": 1, "citovane_zdroje": ["D1:12", "D2:13"]}}
+]
+"""
+    return f"""
+                Si ucitel. Doplň pole citovane_zdroje pre nasledujuce LO, kde je prazdne. 
+                Pouzi iba zdroje, ktore su viditelne v texte so znacenkou [zdroj D1:1].
+                Ak si nie si isty, vrat aspon najrelevantnejsi jeden zdroj. Pouzi format ["D1:1", "D2:5"].
+
+                Vstupne LO:
+                {lo_summary_text}
+
+                Text materialu:
+                \"\"\"{batch_text_with_pages}\"\"\"
+
+                Vrat LEN validny JSON ako pole objektov:
+                [
+                    {{"id": 1, "citovane_zdroje": ["D1:12", "D2:13"]}}
+                ]
+                """

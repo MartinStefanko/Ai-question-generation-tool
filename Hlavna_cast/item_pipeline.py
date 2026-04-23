@@ -10,6 +10,7 @@ from context_builder import (
     parse_source_refs,
     resolve_source_names,
 )
+from document_language import detect_document_language
 from item_answerability import analyze_item_answerability
 from item_faithfulness import analyze_item_faithfulness
 from item_relevance_to_lo import analyze_item_relevance_to_lo
@@ -38,6 +39,7 @@ def generate_items_for_batch(
     los_batch,
     page_map,
     document_type_info=None,
+    document_language="sk",
     model="gemini-2.5-flash-lite",
     client=None,
     verbose=True
@@ -74,7 +76,399 @@ def generate_items_for_batch(
     python_document = bool(document_type_info.get("is_python_document", False))
     document_type_reason = str(document_type_info.get("reason", "")).strip()
 
-    prompt = f"""
+    prompt = _build_item_generation_prompt(
+        los_text,
+        python_document=python_document,
+        document_type_reason=document_type_reason,
+        document_language=document_language,
+    )
+
+    try:
+        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
+        parsed = safe_load_json(response.text if response else "")
+    except Exception as e:
+        ids = [b["id"] for b in lo_blocks]
+        if verbose:
+            print(f"Generovanie položiek pre batch LO {ids} zlyhalo: {e}")
+        return []
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return []
+
+    items = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if "lo_id" not in item:
+            continue
+        items.append(_normalize_generated_item(item))
+    return items
+
+
+def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None, verbose=True, document_language="sk"):
+    if not items_batch:
+        return {}
+
+    parts = []
+    for item in items_batch:
+        parts.append(
+            f"Item id: {item.get('id')}\n"
+            f"- lo_id: {item.get('lo_id')}\n"
+            f"- typ: {item.get('typ', '')}\n"
+            f"- otazka: {item.get('otazka', '')}\n"
+            f"- odpoved: {item.get('odpoved', '')}\n"
+            f"- jazyk: {item.get('jazyk', '')}\n"
+            f"- execution_mode: {item.get('execution_mode', '')}\n"
+            f"- function_name: {item.get('function_name', '')}\n"
+            f"- kod_riesenia: {item.get('kod_riesenia', '')}\n"
+            f"- test_cases: {item.get('test_cases', [])}\n"
+            f"- napoveda: {item.get('napoveda', '')}\n"
+            f"- citovane_zdroje: {item.get('citovane_zdroje', [])}"
+        )
+    items_text = "\n\n".join(parts)
+
+    prompt = _build_item_evaluation_prompt(items_text, document_language)
+
+    try:
+        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
+        parsed = safe_load_json(response.text if response else "")
+    except Exception as e:
+        if verbose:
+            print(f"Hodnotenie batchu položiek zlyhalo: {e}")
+        return {}
+
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+    if not isinstance(parsed, list):
+        return {}
+
+    evaluations = {}
+    for raw in parsed:
+        if not isinstance(raw, dict):
+            continue
+        item_id = raw.get("id")
+        if item_id is None:
+            continue
+        try:
+            score = int(raw.get("skore"))
+        except (TypeError, ValueError):
+            continue
+        score = max(1, min(5, score))
+        reason = str(raw.get("zdovodnenie", "")).strip()
+        evaluations[item_id] = {"skore": score, "zdovodnenie": reason}
+    return evaluations
+
+
+def _item_sort_key(item, lo_order):
+    lo_id = item.get("lo_id")
+    lo_pos = lo_order.get(lo_id, float("inf"))
+    refs = parse_source_refs(item.get("citovane_zdroje", []))
+    source_id, first_page = refs[0] if refs else ("", float("inf"))
+    return (lo_pos, source_id or "", first_page, item.get("id", float("inf")))
+
+
+def _attach_source_names(items, source_name_map):
+    for item in items:
+        item["zdroj"] = resolve_source_names(item.get("citovane_zdroje", []), source_name_map)
+    return items
+
+
+def generate_all_items(
+    los,
+    segmenty,
+    batch_size=10,
+    evaluation_batch_size=20,
+    model="gemini-2.5-flash-lite",
+    generation_model=None,
+    evaluation_model=None,
+    output_dir=None,
+    client=None,
+    verbose=True,
+    max_batch_attempts=3,
+    max_eval_attempts=2,
+    return_metrics=False,
+):
+    generation_model = generation_model or model
+    evaluation_model = evaluation_model or model
+
+    page_map = build_page_map(segmenty)
+    source_name_map = build_source_name_map(segmenty)
+    language_info = detect_document_language(
+        segmenty,
+        client=client,
+        model=generation_model,
+        verbose=verbose,
+    )
+    document_language = language_info.get("language", "sk")
+    document_type_info = classify_document_for_python_items(
+        segmenty,
+        client=client,
+        model=evaluation_model,
+        verbose=verbose,
+    )
+    lo_order = {lo.get("id"): idx for idx, lo in enumerate(los)}
+    all_items = []
+    next_item_id = 1
+    total_los = len(los)
+
+    if verbose:
+        print(f"Začínam generovanie položiek pre {total_los} LO v batchoch po {batch_size}.")
+    generation_seconds = 0.0
+    evaluation_seconds = 0.0
+    batch_num = 1
+    for start in range(0, total_los, batch_size):
+        batch = los[start:start + batch_size]
+        lo_ids = [lo.get("id") for lo in batch]
+        if verbose:
+            print(f"\nBatch {batch_num}: LO id {lo_ids}")
+        start_batch_generation = time.perf_counter()
+        batch_generation_seconds = 0.0
+        batch_evaluation_seconds = 0.0
+
+        raw_items = []
+        for attempt in range(1, max_batch_attempts + 1):
+            raw_items = generate_items_for_batch(
+                batch,
+                page_map,
+                document_type_info=document_type_info,
+                document_language=document_language,
+                model=generation_model,
+                client=client,
+                verbose=verbose
+            )
+            if raw_items:
+                break
+            if verbose and max_batch_attempts > 1:
+                print(f"Batch {batch_num}: prazdny vystup, opakujem ({attempt}/{max_batch_attempts})")
+
+        if not raw_items:
+            if verbose:
+                print(f"Batch {batch_num}: LLM nevrátil žiadne položky.")
+        else:
+            created_batch_items = []
+            for raw in raw_items:
+                lo_id = raw.get("lo_id")
+                record = {
+                    "id": next_item_id,
+                    "lo_id": lo_id,
+                    "typ": raw.get("typ", ""),
+                    "otazka": raw.get("otazka", ""),
+                    "odpoved": raw.get("odpoved", ""),
+                    "jazyk": raw.get("jazyk", ""),
+                    "kod_riesenia": raw.get("kod_riesenia", ""),
+                    "execution_mode": raw.get("execution_mode", ""),
+                    "function_name": raw.get("function_name", ""),
+                    "automaticky_testovatelna": raw.get("automaticky_testovatelna", False),
+                    "test_cases": raw.get("test_cases", []),
+                    "napoveda": raw.get("napoveda", ""),
+                    "citovane_zdroje": raw.get("citovane_zdroje", [])
+                }
+                record["zdroj"] = resolve_source_names(record.get("citovane_zdroje", []), source_name_map)
+                created_batch_items.append(record)
+                all_items.append(record)
+                next_item_id += 1
+
+            batch_generation_seconds = time.perf_counter() - start_batch_generation
+            generation_seconds += batch_generation_seconds
+
+            start_batch_evaluation = time.perf_counter()
+            batch_eval = {}
+            for attempt in range(1, max_eval_attempts + 1):
+                batch_eval = evaluate_items_batch(
+                    created_batch_items,
+                    model=evaluation_model,
+                    client=client,
+                    verbose=verbose,
+                    document_language=document_language,
+                )
+                if batch_eval:
+                    break
+                if verbose and max_eval_attempts > 1:
+                    print(f"Batch {batch_num}: hodnotenie prazdne, opakujem ({attempt}/{max_eval_attempts})")
+
+            for record in created_batch_items:
+                item_eval = batch_eval.get(record["id"], {})
+                record["hodnotenie"] = {
+                    "skore": item_eval.get("skore"),
+                    "zdovodnenie": item_eval.get("zdovodnenie", "")
+                }
+            batch_evaluation_seconds = time.perf_counter() - start_batch_evaluation
+            evaluation_seconds += batch_evaluation_seconds
+
+            if verbose:
+                print(f"Batch {batch_num}: vytvorených položiek: {len(raw_items)}")
+        if not raw_items:
+            batch_generation_seconds = time.perf_counter() - start_batch_generation
+            generation_seconds += batch_generation_seconds
+
+        if verbose:
+            print(
+                f"Batch {batch_num} hotový. "
+                f"Generovanie: {batch_generation_seconds:.2f} s, "
+                f"evaluacia: {batch_evaluation_seconds:.2f} s"
+            )
+        batch_num += 1
+    all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
+    for i, item in enumerate(all_items, start=1):
+        item["id"] = i
+    _attach_source_names(all_items, source_name_map)
+
+    evaluation_start_reports = time.perf_counter()
+    allowed_pages = build_allowed_source_refs(segmenty)
+    valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
+    item_validation_report = validate_items(
+        all_items,
+        allowed_pages=allowed_pages,
+        valid_lo_ids=valid_lo_ids,
+    )
+    item_relevance_report = analyze_item_relevance_to_lo(
+        all_items,
+        los,
+        client=client,
+        verbose=verbose,
+    )
+    item_faithfulness_report = analyze_item_faithfulness(
+        segmenty,
+        all_items,
+        client=client,
+        verbose=verbose,
+        batch_size=evaluation_batch_size,
+        document_language=document_language,
+    )
+    item_answerability_report = analyze_item_answerability(
+        segmenty,
+        all_items,
+        client=client,
+        verbose=verbose,
+        batch_size=evaluation_batch_size,
+        document_language=document_language,
+    )
+    syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
+    accepted_items = _filter_items_variant_b(
+        all_items,
+        item_validation_report,
+        item_faithfulness_report,
+        item_answerability_report,
+        syntax_report,
+        runtime_report,
+        correctness_report,
+    )
+    normalized_items = _normalize_accepted_items(accepted_items, valid_lo_ids)
+    _attach_source_names(normalized_items, source_name_map)
+
+    if output_dir:
+        save_item_validation_report(item_validation_report, output_dir)
+        save_item_relevance_to_lo_report(item_relevance_report, output_dir)
+        save_item_faithfulness_report(item_faithfulness_report, output_dir)
+        save_item_answerability_report(item_answerability_report, output_dir)
+        save_python_code_syntax_report(syntax_report, output_dir)
+        save_python_code_runtime_report(runtime_report, output_dir)
+        save_python_code_correctness_report(correctness_report, output_dir)
+    evaluation_seconds += time.perf_counter() - evaluation_start_reports
+
+    timing_report = {
+        "pipeline": "items",
+        "generation_seconds": round(generation_seconds, 4),
+        "evaluation_seconds": round(evaluation_seconds, 4),
+        "total_seconds": round(generation_seconds + evaluation_seconds, 4),
+        "details": {
+            "items_count_all": len(all_items),
+            "items_count_accepted": len(normalized_items),
+            "los_count": len(los),
+            "is_python_document": document_type_info.get("is_python_document", False),
+            "document_type_reason": document_type_info.get("reason", ""),
+            "document_language": document_language,
+            "document_language_reason": language_info.get("reason", ""),
+        },
+    }
+    if output_dir:
+        save_processing_time_report(timing_report, output_dir, "item_processing_time_report.txt")
+
+    if verbose:
+        print(f"\nGenerovanie položiek pre všetky LO dokončené. Celkový počet položiek: {len(all_items)}")
+        print(f"Cas generovania položiek: {generation_seconds:.2f} s")
+        print(f"Cas evaluacie položiek: {evaluation_seconds:.2f} s")
+    if return_metrics:
+        timing_report["document_type_info"] = document_type_info
+        timing_report["language_info"] = language_info
+        timing_report["all_items"] = all_items
+        return normalized_items, timing_report
+    return normalized_items
+
+
+def _build_item_generation_prompt(los_text, python_document, document_type_reason, document_language):
+    if document_language == "en":
+        return f"""
+You are an experienced teacher.
+Based on multiple learning objectives (LO) and their textual context from the study material,
+generate educational items (questions/tasks) for each LO.
+
+REQUIREMENTS:
+- For each LO, generate only items grounded in its text and focused on that learning objective.
+- Do NOT invent information that is not present in the text.
+- Every item must contain the field "lo_id".
+- If the context does not support any reasonable item, create nothing for that LO.
+- Write questions and tasks as standalone content-focused prompts, not as instructions to read or analyze the text.
+- Do NOT generate meta-phrasing such as "Read the text..." or "Based on the text...".
+- The question should target the subject matter directly.
+- Keep JSON field names exactly as specified below.
+- Because the source document is in English, write the content of the item, answer, and hint in English.
+- Fill testing-related fields only for practical Python tasks.
+- If the document is about C++, Java, JavaScript, C# or another language, the answer and code solution may use that language.
+- Python testing fields belong ONLY to tasks solved in Python.
+- If the solution is not in Python, set:
+  "execution_mode": "",
+  "function_name": "",
+  "automaticky_testovatelna": false,
+  "test_cases": []
+- Set "automaticky_testovatelna" to true only when the task can be reliably checked automatically.
+- GUI, interactive, graphical, web, or otherwise non-testable tasks must have "automaticky_testovatelna": false.
+- If the task is not programming-related or not suitable for automatic testing, set:
+  "jazyk": "",
+  "kod_riesenia": "",
+  "execution_mode": "",
+  "function_name": "",
+  "test_cases": [],
+  "automaticky_testovatelna": false
+- For practical Python tasks, provide runnable code in "kod_riesenia" and create 2 to 4 test cases.
+- Allowed execution_mode values for Python practical tasks:
+  "stdin_stdout" or "function"
+- If you use "function", also fill "function_name".
+- If you use "function", "kod_riesenia" may contain only function definitions plus optional imports or simple constants.
+- In "function" mode, "kod_riesenia" must not contain prints, demo calls, fixed test inputs, or executable code outside the function definition.
+
+Document classification:
+- is_python_document: {"true" if python_document else "false"}
+- reason: {document_type_reason or "no justification"}
+
+HARD RULE:
+- If is_python_document = false, you must not generate Python practical tasks or Python tests.
+
+Learning objectives:
+{los_text}
+
+Output format:
+Return ONLY valid JSON as an array of objects.
+Each object must have:
+- "lo_id"
+- "typ": "teoreticka_otazka" or "prakticka_uloha"
+- "otazka"
+- "odpoved"
+- "napoveda"
+- "citovane_zdroje": source refs like ["D1:12","D2:13"]
+- "jazyk"
+- "kod_riesenia"
+- "execution_mode"
+- "function_name"
+- "automaticky_testovatelna"
+- "test_cases"
+
+Output:
+ONLY a JSON array with no extra text.
+"""
+    return f"""
 Si skusený učiteľ.
 Na zaklade viacerých vzdelávacích cieľov (LO) a ich textového kontextu z učebného materiálu
 vygeneruj vzdelávacie položky (otázky/úlohy) pre každý LO.
@@ -154,53 +548,33 @@ Výstup:
 LEN JSON pole bez akéhokoľvek ďalšieho textu.
 """
 
-    try:
-        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
-        parsed = safe_load_json(response.text if response else "")
-    except Exception as e:
-        ids = [b["id"] for b in lo_blocks]
-        if verbose:
-            print(f"Generovanie položiek pre batch LO {ids} zlyhalo: {e}")
-        return []
 
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return []
+def _build_item_evaluation_prompt(items_text, document_language):
+    if document_language == "en":
+        return f"""
+You are a teacher evaluating the quality of educational items.
+For each item assign:
+- a score from 1 to 5 (1 = very weak, 5 = excellent)
+- a short justification in English (1-2 sentences)
 
-    items = []
-    for item in parsed:
-        if not isinstance(item, dict):
-            continue
-        if "lo_id" not in item:
-            continue
-        items.append(_normalize_generated_item(item))
-    return items
+Evaluate according to:
+- factual correctness,
+- clarity of the question/task wording,
+- quality of the answer,
+- quality of the hint.
 
+Items to evaluate:
+{items_text}
 
-def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None, verbose=True):
-    if not items_batch:
-        return {}
+Return ONLY valid JSON as an array of objects:
+[
+  {{"id": 123, "skore": 4, "zdovodnenie": "short justification"}}
+]
 
-    parts = []
-    for item in items_batch:
-        parts.append(
-            f"Item id: {item.get('id')}\n"
-            f"- lo_id: {item.get('lo_id')}\n"
-            f"- typ: {item.get('typ', '')}\n"
-            f"- otazka: {item.get('otazka', '')}\n"
-            f"- odpoved: {item.get('odpoved', '')}\n"
-            f"- jazyk: {item.get('jazyk', '')}\n"
-            f"- execution_mode: {item.get('execution_mode', '')}\n"
-            f"- function_name: {item.get('function_name', '')}\n"
-            f"- kod_riesenia: {item.get('kod_riesenia', '')}\n"
-            f"- test_cases: {item.get('test_cases', [])}\n"
-            f"- napoveda: {item.get('napoveda', '')}\n"
-            f"- citovane_zdroje: {item.get('citovane_zdroje', [])}"
-        )
-    items_text = "\n\n".join(parts)
-
-    prompt = f"""
+Output:
+ONLY a JSON array with no extra text.
+"""
+    return f"""
 Si učiteľ, ktorý hodnotí kvalitu vzdelávacích položiek.
 Pre každú položku priraď:
 - skore od 1 do 5 (1 = veľmi slabé, 5 = výborné)
@@ -223,258 +597,6 @@ Vráť LEN validný JSON ako pole objektov:
 Výstup:
 LEN JSON pole bez ďalšieho textu.
 """
-
-    try:
-        response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
-        parsed = safe_load_json(response.text if response else "")
-    except Exception as e:
-        if verbose:
-            print(f"Hodnotenie batchu položiek zlyhalo: {e}")
-        return {}
-
-    if isinstance(parsed, dict):
-        parsed = [parsed]
-    if not isinstance(parsed, list):
-        return {}
-
-    evaluations = {}
-    for raw in parsed:
-        if not isinstance(raw, dict):
-            continue
-        item_id = raw.get("id")
-        if item_id is None:
-            continue
-        try:
-            score = int(raw.get("skore"))
-        except (TypeError, ValueError):
-            continue
-        score = max(1, min(5, score))
-        reason = str(raw.get("zdovodnenie", "")).strip()
-        evaluations[item_id] = {"skore": score, "zdovodnenie": reason}
-    return evaluations
-
-
-def _item_sort_key(item, lo_order):
-    lo_id = item.get("lo_id")
-    lo_pos = lo_order.get(lo_id, float("inf"))
-    refs = parse_source_refs(item.get("citovane_zdroje", []))
-    source_id, first_page = refs[0] if refs else ("", float("inf"))
-    return (lo_pos, source_id or "", first_page, item.get("id", float("inf")))
-
-
-def _attach_source_names(items, source_name_map):
-    for item in items:
-        item["zdroj"] = resolve_source_names(item.get("citovane_zdroje", []), source_name_map)
-    return items
-
-
-def generate_all_items(
-    los,
-    segmenty,
-    batch_size=10,
-    evaluation_batch_size=20,
-    model="gemini-2.5-flash-lite",
-    generation_model=None,
-    evaluation_model=None,
-    output_dir=None,
-    client=None,
-    verbose=True,
-    max_batch_attempts=3,
-    max_eval_attempts=2,
-    return_metrics=False,
-):
-    generation_model = generation_model or model
-    evaluation_model = evaluation_model or model
-
-    page_map = build_page_map(segmenty)
-    source_name_map = build_source_name_map(segmenty)
-    document_type_info = classify_document_for_python_items(
-        segmenty,
-        client=client,
-        model=evaluation_model,
-        verbose=verbose,
-    )
-    lo_order = {lo.get("id"): idx for idx, lo in enumerate(los)}
-    all_items = []
-    next_item_id = 1
-    total_los = len(los)
-
-    if verbose:
-        print(f"Začínam generovanie položiek pre {total_los} LO v batchoch po {batch_size}.")
-    generation_seconds = 0.0
-    evaluation_seconds = 0.0
-    batch_num = 1
-    for start in range(0, total_los, batch_size):
-        batch = los[start:start + batch_size]
-        lo_ids = [lo.get("id") for lo in batch]
-        if verbose:
-            print(f"\nBatch {batch_num}: LO id {lo_ids}")
-        start_batch_generation = time.perf_counter()
-        batch_generation_seconds = 0.0
-        batch_evaluation_seconds = 0.0
-
-        raw_items = []
-        for attempt in range(1, max_batch_attempts + 1):
-            raw_items = generate_items_for_batch(
-                batch,
-                page_map,
-                document_type_info=document_type_info,
-                model=generation_model,
-                client=client,
-                verbose=verbose
-            )
-            if raw_items:
-                break
-            if verbose and max_batch_attempts > 1:
-                print(f"Batch {batch_num}: prazdny vystup, opakujem ({attempt}/{max_batch_attempts})")
-
-        if not raw_items:
-            if verbose:
-                print(f"Batch {batch_num}: LLM nevrátil žiadne položky.")
-        else:
-            created_batch_items = []
-            for raw in raw_items:
-                lo_id = raw.get("lo_id")
-                record = {
-                    "id": next_item_id,
-                    "lo_id": lo_id,
-                    "typ": raw.get("typ", ""),
-                    "otazka": raw.get("otazka", ""),
-                    "odpoved": raw.get("odpoved", ""),
-                    "jazyk": raw.get("jazyk", ""),
-                    "kod_riesenia": raw.get("kod_riesenia", ""),
-                    "execution_mode": raw.get("execution_mode", ""),
-                    "function_name": raw.get("function_name", ""),
-                    "automaticky_testovatelna": raw.get("automaticky_testovatelna", False),
-                    "test_cases": raw.get("test_cases", []),
-                    "napoveda": raw.get("napoveda", ""),
-                    "citovane_zdroje": raw.get("citovane_zdroje", [])
-                }
-                record["zdroj"] = resolve_source_names(record.get("citovane_zdroje", []), source_name_map)
-                created_batch_items.append(record)
-                all_items.append(record)
-                next_item_id += 1
-
-            batch_generation_seconds = time.perf_counter() - start_batch_generation
-            generation_seconds += batch_generation_seconds
-
-            start_batch_evaluation = time.perf_counter()
-            batch_eval = {}
-            for attempt in range(1, max_eval_attempts + 1):
-                batch_eval = evaluate_items_batch(
-                    created_batch_items,
-                    model=evaluation_model,
-                    client=client,
-                    verbose=verbose
-                )
-                if batch_eval:
-                    break
-                if verbose and max_eval_attempts > 1:
-                    print(f"Batch {batch_num}: hodnotenie prazdne, opakujem ({attempt}/{max_eval_attempts})")
-
-            for record in created_batch_items:
-                item_eval = batch_eval.get(record["id"], {})
-                record["hodnotenie"] = {
-                    "skore": item_eval.get("skore"),
-                    "zdovodnenie": item_eval.get("zdovodnenie", "")
-                }
-            batch_evaluation_seconds = time.perf_counter() - start_batch_evaluation
-            evaluation_seconds += batch_evaluation_seconds
-
-            if verbose:
-                print(f"Batch {batch_num}: vytvorených položiek: {len(raw_items)}")
-        if not raw_items:
-            batch_generation_seconds = time.perf_counter() - start_batch_generation
-            generation_seconds += batch_generation_seconds
-
-        if verbose:
-            print(
-                f"Batch {batch_num} hotový. "
-                f"Generovanie: {batch_generation_seconds:.2f} s, "
-                f"evaluacia: {batch_evaluation_seconds:.2f} s"
-            )
-        batch_num += 1
-    all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
-    for i, item in enumerate(all_items, start=1):
-        item["id"] = i
-    _attach_source_names(all_items, source_name_map)
-
-    evaluation_start_reports = time.perf_counter()
-    allowed_pages = build_allowed_source_refs(segmenty)
-    valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
-    item_validation_report = validate_items(
-        all_items,
-        allowed_pages=allowed_pages,
-        valid_lo_ids=valid_lo_ids,
-    )
-    item_relevance_report = analyze_item_relevance_to_lo(
-        all_items,
-        los,
-        client=client,
-        verbose=verbose,
-    )
-    item_faithfulness_report = analyze_item_faithfulness(
-        segmenty,
-        all_items,
-        client=client,
-        verbose=verbose,
-        batch_size=evaluation_batch_size,
-    )
-    item_answerability_report = analyze_item_answerability(
-        segmenty,
-        all_items,
-        client=client,
-        verbose=verbose,
-        batch_size=evaluation_batch_size,
-    )
-    syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
-    accepted_items = _filter_items_variant_b(
-        all_items,
-        item_validation_report,
-        item_faithfulness_report,
-        item_answerability_report,
-        syntax_report,
-        runtime_report,
-        correctness_report,
-    )
-    normalized_items = _normalize_accepted_items(accepted_items, valid_lo_ids)
-    _attach_source_names(normalized_items, source_name_map)
-
-    if output_dir:
-        save_item_validation_report(item_validation_report, output_dir)
-        save_item_relevance_to_lo_report(item_relevance_report, output_dir)
-        save_item_faithfulness_report(item_faithfulness_report, output_dir)
-        save_item_answerability_report(item_answerability_report, output_dir)
-        save_python_code_syntax_report(syntax_report, output_dir)
-        save_python_code_runtime_report(runtime_report, output_dir)
-        save_python_code_correctness_report(correctness_report, output_dir)
-    evaluation_seconds += time.perf_counter() - evaluation_start_reports
-
-    timing_report = {
-        "pipeline": "items",
-        "generation_seconds": round(generation_seconds, 4),
-        "evaluation_seconds": round(evaluation_seconds, 4),
-        "total_seconds": round(generation_seconds + evaluation_seconds, 4),
-        "details": {
-            "items_count_all": len(all_items),
-            "items_count_accepted": len(normalized_items),
-            "los_count": len(los),
-            "is_python_document": document_type_info.get("is_python_document", False),
-            "document_type_reason": document_type_info.get("reason", ""),
-        },
-    }
-    if output_dir:
-        save_processing_time_report(timing_report, output_dir, "item_processing_time_report.txt")
-
-    if verbose:
-        print(f"\nGenerovanie položiek pre všetky LO dokončené. Celkový počet položiek: {len(all_items)}")
-        print(f"Cas generovania položiek: {generation_seconds:.2f} s")
-        print(f"Cas evaluacie položiek: {evaluation_seconds:.2f} s")
-    if return_metrics:
-        timing_report["document_type_info"] = document_type_info
-        timing_report["all_items"] = all_items
-        return normalized_items, timing_report
-    return normalized_items
 
 
 def _normalize_generated_item(item):

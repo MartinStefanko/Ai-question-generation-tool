@@ -14,6 +14,7 @@ def analyze_item_answerability(
     verbose: bool = True,
     batch_size: int = 10,
     max_batch_attempts: int = 2,
+    document_language: str = "sk",
 ):
     report = {
         "stats": {
@@ -65,6 +66,7 @@ def analyze_item_answerability(
                 client=client,
                 model=model,
                 verbose=verbose,
+                document_language=document_language,
             )
             if evaluations:
                 break
@@ -94,7 +96,7 @@ def analyze_item_answerability(
     return report
 
 
-def _evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True):
+def _evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True, document_language: str = "sk"):
     parts = []
     for item in batch:
         parts.append(
@@ -104,7 +106,24 @@ def _evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERAB
         )
     joined = "\n\n-----\n\n".join(parts)
 
-    prompt = f"""
+    if document_language == "en":
+        prompt = f"""
+Assess the answerability of each question against its source.
+
+Score 1-5:
+1 = the question cannot be reliably answered from the source
+5 = the question can be answered clearly and unambiguously from the source
+
+Records:
+{joined}
+
+Return ONLY valid JSON as an array of objects:
+[
+  {{"item_id": 1, "skore": 1, "zdovodnenie": "short justification in English"}}
+]
+"""
+    else:
+        prompt = f"""
 Posud answerability otazky voci zdroju pre kazdy zaznam.
 
 Skore 1-5:
