@@ -26,6 +26,9 @@ Hlavna_cast/app.py
 Hlavna_cast/context_builder.py
 - Obsahuje pomocné funkcie na prácu s textom. Vytvára mapu strán dokumentu, číta čísla strán z citovaných zdrojov a skladá kontext pre generovanie konkrétnych vzdelávacích objektov alebo položiek.
 
+Hlavna_cast/document_language.py
+- Deteguje, či je dokument primárne v slovenčine alebo angličtine. Používa LLM klasifikáciu a pri chybe odhad podľa obsahu textu.
+
 Hlavna_cast/item_answerability.py
 - Obsahuje hodnotenie, či sa na vygenerované otázky dá odpovedať zo zdrojového textu. Používa LLM a výstupom je report so skóre a zdôvodnením.
 
@@ -89,4 +92,3 @@ Generované výstupy
 
 Hlavna_cast/vystup/
 - Priečinok pre výstupy vytvárané aplikáciou. Automaticky sa vytvorí pri spracovaní dokumentu.
-
