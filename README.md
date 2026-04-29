@@ -52,11 +52,13 @@ winget install --id Microsoft.VCRedist.2015+.x86 -e
 
 Najskôr si stiahnite alebo naklonujte projekt a otvorte jeho koreňový priečinok v termináli.
 
-Vytvorte virtuálne prostredie:
+Vytvorte virtuálne prostredie (Windows):
 
 ```bash
 python -m venv venv
 ```
+
+Pre Linux je potrebova najprv nainštalovať knižnicu venv.
 
 Aktivujte virtuálne prostredie.
 
