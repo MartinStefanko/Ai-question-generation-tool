@@ -33,6 +33,7 @@ ITEM_MIN_SCORE = 3
 ITEM_MIN_ANSWERABILITY_SCORE = 3
 ITEM_MIN_FAITHFULNESS_SCORE = 3
 PYTHON_MIN_TEST_PASS_RATE_PERCENT = 80.0
+ITEM_DOCUMENT_CLASSIFICATION_MAX_CHARS = 12000
 
 
 def generate_items_for_batch(
@@ -76,7 +77,7 @@ def generate_items_for_batch(
     python_document = bool(document_type_info.get("is_python_document", False))
     document_type_reason = str(document_type_info.get("reason", "")).strip()
 
-    prompt = _build_item_generation_prompt(
+    prompt = build_item_generation_prompt(
         los_text,
         python_document=python_document,
         document_type_reason=document_type_reason,
@@ -103,7 +104,7 @@ def generate_items_for_batch(
             continue
         if "lo_id" not in item:
             continue
-        items.append(_normalize_generated_item(item))
+        items.append(normalize_generated_item(item))
     return items
 
 
@@ -129,7 +130,7 @@ def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None
         )
     items_text = "\n\n".join(parts)
 
-    prompt = _build_item_evaluation_prompt(items_text, document_language)
+    prompt = build_item_evaluation_prompt(items_text, document_language)
 
     try:
         response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
@@ -161,7 +162,7 @@ def evaluate_items_batch(items_batch, model="gemini-2.5-flash-lite", client=None
     return evaluations
 
 
-def _item_sort_key(item, lo_order):
+def item_sort_key(item, lo_order):
     lo_id = item.get("lo_id")
     lo_pos = lo_order.get(lo_id, float("inf"))
     refs = parse_source_refs(item.get("citovane_zdroje", []))
@@ -169,7 +170,7 @@ def _item_sort_key(item, lo_order):
     return (lo_pos, source_id or "", first_page, item.get("id", float("inf")))
 
 
-def _attach_source_names(items, source_name_map):
+def attach_source_names(items, source_name_map):
     for item in items:
         item["zdroj"] = resolve_source_names(item.get("citovane_zdroje", []), source_name_map)
     return items
@@ -195,6 +196,8 @@ def generate_all_items(
 
     page_map = build_page_map(segmenty)
     source_name_map = build_source_name_map(segmenty)
+    if verbose:
+        print("Item pipeline: detekujem jazyk dokumentu.")
     language_info = detect_document_language(
         segmenty,
         client=client,
@@ -202,6 +205,8 @@ def generate_all_items(
         verbose=verbose,
     )
     document_language = language_info.get("language", "sk")
+    if verbose:
+        print("Item pipeline: klasifikujem dokument pre Python polozky.")
     document_type_info = classify_document_for_python_items(
         segmenty,
         client=client,
@@ -310,12 +315,14 @@ def generate_all_items(
                 f"evaluacia: {batch_evaluation_seconds:.2f} s"
             )
         batch_num += 1
-    all_items.sort(key=lambda item: _item_sort_key(item, lo_order))
+    all_items.sort(key=lambda item: item_sort_key(item, lo_order))
     for i, item in enumerate(all_items, start=1):
         item["id"] = i
-    _attach_source_names(all_items, source_name_map)
+    attach_source_names(all_items, source_name_map)
 
     evaluation_start_reports = time.perf_counter()
+    if verbose:
+        print("Item pipeline: spustam validaciu a evaluacne reporty poloziek.")
     allowed_pages = build_allowed_source_refs(segmenty)
     valid_lo_ids = {lo.get("id") for lo in los if isinstance(lo.get("id"), int)}
     item_validation_report = validate_items(
@@ -346,7 +353,7 @@ def generate_all_items(
         document_language=document_language,
     )
     syntax_report, runtime_report, correctness_report = evaluate_python_code_items(all_items)
-    accepted_items = _filter_items_variant_b(
+    accepted_items = filter_items_variant_b(
         all_items,
         item_validation_report,
         item_faithfulness_report,
@@ -355,8 +362,8 @@ def generate_all_items(
         runtime_report,
         correctness_report,
     )
-    normalized_items = _normalize_accepted_items(accepted_items, valid_lo_ids)
-    _attach_source_names(normalized_items, source_name_map)
+    normalized_items = normalize_accepted_items(accepted_items, valid_lo_ids)
+    attach_source_names(normalized_items, source_name_map)
 
     if output_dir:
         save_item_validation_report(item_validation_report, output_dir)
@@ -398,7 +405,7 @@ def generate_all_items(
     return normalized_items
 
 
-def _build_item_generation_prompt(los_text, python_document, document_type_reason, document_language):
+def build_item_generation_prompt(los_text, python_document, document_type_reason, document_language):
     if document_language == "en":
         return f"""
 You are an experienced teacher.
@@ -549,7 +556,7 @@ LEN JSON pole bez akéhokoľvek ďalšieho textu.
 """
 
 
-def _build_item_evaluation_prompt(items_text, document_language):
+def build_item_evaluation_prompt(items_text, document_language):
     if document_language == "en":
         return f"""
 You are a teacher evaluating the quality of educational items.
@@ -599,20 +606,20 @@ LEN JSON pole bez ďalšieho textu.
 """
 
 
-def _normalize_generated_item(item):
+def normalize_generated_item(item):
     normalized = {
         "lo_id": item.get("lo_id"),
         "typ": str(item.get("typ", "")).strip(),
         "otazka": str(item.get("otazka", "")).strip(),
         "odpoved": item.get("odpoved", ""),
         "napoveda": item.get("napoveda", ""),
-        "citovane_zdroje": _normalize_sources(item.get("citovane_zdroje", [])),
+        "citovane_zdroje": normalize_sources(item.get("citovane_zdroje", [])),
         "jazyk": str(item.get("jazyk", "")).strip().lower(),
         "kod_riesenia": str(item.get("kod_riesenia", "")).strip(),
         "execution_mode": str(item.get("execution_mode", "")).strip(),
         "function_name": str(item.get("function_name", "")).strip(),
         "automaticky_testovatelna": bool(item.get("automaticky_testovatelna", False)),
-        "test_cases": _normalize_test_cases(item.get("test_cases", [])),
+        "test_cases": normalize_test_cases(item.get("test_cases", [])),
     }
 
     if normalized["typ"] != "prakticka_uloha":
@@ -640,8 +647,8 @@ def _normalize_generated_item(item):
         not normalized["automaticky_testovatelna"]
         or not normalized["execution_mode"]
         or not normalized["test_cases"]
-        or _looks_non_testable_python_task(normalized)
-        or _has_invalid_function_mode_code(normalized)
+        or looks_non_testable_python_task(normalized)
+        or has_invalid_function_mode_code(normalized)
     ):
         normalized["automaticky_testovatelna"] = False
         normalized["execution_mode"] = ""
@@ -650,14 +657,14 @@ def _normalize_generated_item(item):
     return normalized
 
 
-def _normalize_sources(value):
+def normalize_sources(value):
     if isinstance(value, list):
         return [str(v).strip() for v in value if str(v).strip()]
     text = str(value).strip()
     return [text] if text else []
 
 
-def _normalize_test_cases(value):
+def normalize_test_cases(value):
     if not isinstance(value, list):
         return []
 
@@ -672,7 +679,7 @@ def _normalize_test_cases(value):
     return normalized
 
 
-def _looks_non_testable_python_task(item):
+def looks_non_testable_python_task(item):
     text = " ".join([
         item.get("otazka", ""),
         item.get("odpoved", "") if isinstance(item.get("odpoved", ""), str) else "",
@@ -699,7 +706,7 @@ def _looks_non_testable_python_task(item):
     return any(token in text for token in blocked_tokens)
 
 
-def _has_invalid_function_mode_code(item):
+def has_invalid_function_mode_code(item):
     if item.get("execution_mode") != "function":
         return False
 
@@ -741,7 +748,7 @@ def _has_invalid_function_mode_code(item):
     return not found_target_function
 
 
-def _is_python_practical_item(item):
+def is_python_practical_item(item):
     return (
         item.get("typ") == "prakticka_uloha"
         and str(item.get("jazyk", "")).strip().lower() == "python"
@@ -749,7 +756,7 @@ def _is_python_practical_item(item):
     )
 
 
-def _filter_items_variant_b(
+def filter_items_variant_b(
     items,
     validation_report,
     faithfulness_report,
@@ -758,7 +765,7 @@ def _filter_items_variant_b(
     runtime_report,
     correctness_report,
 ):
-    invalid_item_ids = _extract_prefixed_ids(validation_report.get("errors", []), "Polozka")
+    invalid_item_ids = extract_prefixed_ids(validation_report.get("errors", []), "Polozka")
     faithfulness_by_id = {
         row.get("item_id"): row.get("faithfulness_score")
         for row in faithfulness_report.get("items", [])
@@ -795,14 +802,14 @@ def _filter_items_variant_b(
         if faithfulness_score is None or faithfulness_score < ITEM_MIN_FAITHFULNESS_SCORE:
             continue
 
-        score = _get_item_score(item)
+        score = get_item_score(item)
         answerability_score = answerability_by_id.get(item_id)
         score_ok = score is not None and score >= ITEM_MIN_SCORE
         answerability_ok = answerability_score is not None and answerability_score >= ITEM_MIN_ANSWERABILITY_SCORE
         if not (score_ok or answerability_ok):
             continue
 
-        if _is_python_practical_item(item):
+        if is_python_practical_item(item):
             if syntax_by_id.get(item_id) is not True:
                 continue
             if runtime_by_id.get(item_id) is not True:
@@ -821,7 +828,7 @@ def _filter_items_variant_b(
     return accepted
 
 
-def _normalize_accepted_items(items, valid_lo_ids):
+def normalize_accepted_items(items, valid_lo_ids):
     normalized = []
     valid_lo_ids = set(valid_lo_ids or [])
     for new_id, item in enumerate(items, start=1):
@@ -833,7 +840,7 @@ def _normalize_accepted_items(items, valid_lo_ids):
     return normalized
 
 
-def _get_item_score(item):
+def get_item_score(item):
     hodnotenie = item.get("hodnotenie", {})
     if isinstance(hodnotenie, dict):
         score = hodnotenie.get("skore")
@@ -845,7 +852,7 @@ def _get_item_score(item):
         return None
 
 
-def _extract_prefixed_ids(errors, prefix):
+def extract_prefixed_ids(errors, prefix):
     ids = set()
     pattern = re.compile(rf"{re.escape(prefix)}\s+(\d+)")
     for error in errors:
@@ -856,7 +863,7 @@ def _extract_prefixed_ids(errors, prefix):
 
 
 def classify_document_for_python_items(segmenty, client=None, model="gemini-2.5-flash-lite", verbose=True):
-    source_text = _build_full_document_text(segmenty)
+    source_text = build_full_document_text(segmenty, max_chars=ITEM_DOCUMENT_CLASSIFICATION_MAX_CHARS)
     if not source_text.strip():
         return {"is_python_document": False, "reason": "Dokument nema text pre klasifikaciu."}
 
@@ -895,13 +902,20 @@ Dokument:
     }
 
 
-def _build_full_document_text(segmenty):
+def build_full_document_text(segmenty, max_chars=None):
     parts = []
+    total = 0
     for seg in segmenty:
         text = str(seg.get("text", "")).strip()
         if not text:
             continue
+        if max_chars is not None:
+            remaining = max_chars - total
+            if remaining <= 0:
+                break
+            text = text[:remaining]
         page = seg.get("page")
         block = f"[{format_segment_label(seg)}]\n{text}" if page is not None else text
         parts.append(block)
+        total += len(text)
     return "\n\n".join(parts)

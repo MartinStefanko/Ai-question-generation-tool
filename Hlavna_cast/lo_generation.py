@@ -29,7 +29,7 @@ def generate_learning_objects(
             parts.append(f"[{format_segment_label(seg)}]\n{seg.get('text', '')}")
         combined_text = "\n\n".join(parts)
 
-        prompt = _build_lo_generation_prompt(combined_text, document_language)
+        prompt = build_lo_generation_prompt(combined_text, document_language)
 
         response = generate_with_retry(prompt, client=client, model=model, verbose=verbose)
         response_text = response.text if response else ""
@@ -87,7 +87,7 @@ def generate_learning_objects(
                 )
             lo_summary_text = "\n".join(lo_summary)
 
-            prompt_missing = _build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language)
+            prompt_missing = build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language)
             try:
                 response_missing = generate_with_retry(prompt_missing, client=client, model=model, verbose=verbose)
                 parsed_missing = safe_load_json(response_missing.text if response_missing else "")
@@ -148,7 +148,7 @@ def generate_learning_objects(
     return vsetky_lo
 
 
-def _build_lo_generation_prompt(combined_text, document_language):
+def build_lo_generation_prompt(combined_text, document_language):
     if document_language == "en":
         return f"""
 You are a teacher. Extract measurable learning objectives from the following material.
@@ -189,7 +189,7 @@ Vyučovací materiál:
 """
 
 
-def _build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language):
+def build_missing_sources_prompt(lo_summary_text, batch_text_with_pages, document_language):
     if document_language == "en":
         return f"""
 You are a teacher. Fill the field citovane_zdroje for the following learning objectives where it is missing.

@@ -9,8 +9,8 @@ PYTHON_TIMEOUT_SECONDS = 5
 
 
 def evaluate_python_code_items(items, timeout_seconds: int = PYTHON_TIMEOUT_SECONDS):
-    python_practical_items = [item for item in items if _is_python_practical_item(item)]
-    python_items = [_normalize_python_item(item) for item in python_practical_items if _is_auto_testable_python_item(item)]
+    python_practical_items = [item for item in items if is_python_practical_item(item)]
+    python_items = [normalize_python_item(item) for item in python_practical_items if is_auto_testable_python_item(item)]
 
     syntax_report = {
         "stats": {
@@ -50,7 +50,7 @@ def evaluate_python_code_items(items, timeout_seconds: int = PYTHON_TIMEOUT_SECO
     }
 
     for item in python_items:
-        syntax_result = _check_python_syntax(item["kod_riesenia"])
+        syntax_result = check_python_syntax(item["kod_riesenia"])
         syntax_report["items"].append({
             "item_id": item["id"],
             "lo_id": item["lo_id"],
@@ -63,7 +63,7 @@ def evaluate_python_code_items(items, timeout_seconds: int = PYTHON_TIMEOUT_SECO
         if syntax_result["valid"]:
             syntax_report["stats"]["syntax_valid_items"] += 1
 
-        runtime_result = _check_python_runtime(item, syntax_result["valid"], timeout_seconds)
+        runtime_result = check_python_runtime(item, syntax_result["valid"], timeout_seconds)
         runtime_report["items"].append({
             "item_id": item["id"],
             "lo_id": item["lo_id"],
@@ -77,7 +77,7 @@ def evaluate_python_code_items(items, timeout_seconds: int = PYTHON_TIMEOUT_SECO
         if runtime_result["valid"]:
             runtime_report["stats"]["runtime_valid_items"] += 1
 
-        correctness_result = _check_python_correctness(item, syntax_result["valid"], timeout_seconds)
+        correctness_result = check_python_correctness(item, syntax_result["valid"], timeout_seconds)
         correctness_report["items"].append({
             "item_id": item["id"],
             "lo_id": item["lo_id"],
@@ -94,13 +94,13 @@ def evaluate_python_code_items(items, timeout_seconds: int = PYTHON_TIMEOUT_SECO
         if correctness_result["at_least_one_test_passed"] and correctness_result["test_cases_total"] > 0:
             correctness_report["stats"]["correct_items"] += 1
 
-    _finalize_syntax_report(syntax_report)
-    _finalize_runtime_report(runtime_report)
-    _finalize_correctness_report(correctness_report)
+    finalize_syntax_report(syntax_report)
+    finalize_runtime_report(runtime_report)
+    finalize_correctness_report(correctness_report)
     return syntax_report, runtime_report, correctness_report
 
 
-def _normalize_python_item(item):
+def normalize_python_item(item):
     return {
         "id": item.get("id"),
         "lo_id": item.get("lo_id"),
@@ -112,7 +112,7 @@ def _normalize_python_item(item):
     }
 
 
-def _is_python_practical_item(item):
+def is_python_practical_item(item):
     return (
         item.get("typ") == "prakticka_uloha"
         and str(item.get("jazyk", "")).strip().lower() == "python"
@@ -120,11 +120,11 @@ def _is_python_practical_item(item):
     )
 
 
-def _is_auto_testable_python_item(item):
-    return _is_python_practical_item(item) and bool(item.get("automaticky_testovatelna", False))
+def is_auto_testable_python_item(item):
+    return is_python_practical_item(item) and bool(item.get("automaticky_testovatelna", False))
 
 
-def _check_python_syntax(code):
+def check_python_syntax(code):
     try:
         ast.parse(code)
         return {"valid": True, "error": ""}
@@ -132,7 +132,7 @@ def _check_python_syntax(code):
         return {"valid": False, "error": f"{e.__class__.__name__}: {e}"}
 
 
-def _check_python_runtime(item, syntax_valid, timeout_seconds):
+def check_python_runtime(item, syntax_valid, timeout_seconds):
     if not syntax_valid:
         return {"valid": False, "timed_out": False, "error": "Syntax invalid."}
 
@@ -141,7 +141,7 @@ def _check_python_runtime(item, syntax_valid, timeout_seconds):
         stdin_data = str(item["test_cases"][0].get("input", ""))
 
     try:
-        result = _run_python_code(item["kod_riesenia"], stdin_data=stdin_data, timeout_seconds=timeout_seconds)
+        result = run_python_code(item["kod_riesenia"], stdin_data=stdin_data, timeout_seconds=timeout_seconds)
     except subprocess.TimeoutExpired:
         return {"valid": False, "timed_out": True, "error": f"Timeout after {timeout_seconds}s."}
     except Exception as e:
@@ -152,12 +152,12 @@ def _check_python_runtime(item, syntax_valid, timeout_seconds):
     return {"valid": True, "timed_out": False, "error": ""}
 
 
-def _check_python_correctness(item, syntax_valid, timeout_seconds):
+def check_python_correctness(item, syntax_valid, timeout_seconds):
     test_cases = item.get("test_cases", [])
     if not syntax_valid:
-        return _empty_correctness("Syntax invalid.", len(test_cases))
+        return empty_correctness("Syntax invalid.", len(test_cases))
     if not test_cases:
-        return _empty_correctness("No test cases.", 0)
+        return empty_correctness("No test cases.", 0)
 
     passed = 0
     first_error = ""
@@ -165,7 +165,7 @@ def _check_python_correctness(item, syntax_valid, timeout_seconds):
     for test_case in test_cases:
         try:
             if item["execution_mode"] == "stdin_stdout":
-                run = _run_python_code(
+                run = run_python_code(
                     item["kod_riesenia"],
                     stdin_data=str(test_case.get("input", "")),
                     timeout_seconds=timeout_seconds,
@@ -174,13 +174,13 @@ def _check_python_correctness(item, syntax_valid, timeout_seconds):
                     if not first_error:
                         first_error = (run.stderr or "").strip() or "Runtime error."
                     continue
-                actual = _normalize_text_output(run.stdout)
-                expected = _normalize_text_output(test_case.get("expected_output", ""))
+                actual = normalize_text_output(run.stdout)
+                expected = normalize_text_output(test_case.get("expected_output", ""))
                 if actual == expected:
                     passed += 1
 
             elif item["execution_mode"] == "function" and item.get("function_name"):
-                function_result = _run_python_function_test(
+                function_result = run_python_function_test(
                     code=item["kod_riesenia"],
                     function_name=item["function_name"],
                     test_input=test_case.get("input", []),
@@ -190,7 +190,7 @@ def _check_python_correctness(item, syntax_valid, timeout_seconds):
                     if not first_error:
                         first_error = function_result["error"]
                     continue
-                if _normalize_structured_value(function_result["result"]) == _normalize_structured_value(
+                if normalize_structured_value(function_result["result"]) == normalize_structured_value(
                     test_case.get("expected_output", "")
                 ):
                     passed += 1
@@ -213,7 +213,7 @@ def _check_python_correctness(item, syntax_valid, timeout_seconds):
     }
 
 
-def _run_python_code(code, stdin_data="", timeout_seconds=PYTHON_TIMEOUT_SECONDS):
+def run_python_code(code, stdin_data="", timeout_seconds=PYTHON_TIMEOUT_SECONDS):
     with tempfile.TemporaryDirectory() as temp_dir:
         script_path = os.path.join(temp_dir, "solution.py")
         with open(script_path, "w", encoding="utf-8") as f:
@@ -228,7 +228,7 @@ def _run_python_code(code, stdin_data="", timeout_seconds=PYTHON_TIMEOUT_SECONDS
         )
 
 
-def _run_python_function_test(code, function_name, test_input, timeout_seconds):
+def run_python_function_test(code, function_name, test_input, timeout_seconds):
     with tempfile.TemporaryDirectory() as temp_dir:
         solution_path = os.path.join(temp_dir, "solution.py")
         runner_path = os.path.join(temp_dir, "runner.py")
@@ -267,18 +267,18 @@ def _run_python_function_test(code, function_name, test_input, timeout_seconds):
         return {"ok": True, "error": "", "result": parsed}
 
 
-def _normalize_text_output(value):
+def normalize_text_output(value):
     return str(value).strip().replace("\r\n", "\n")
 
 
-def _normalize_structured_value(value):
+def normalize_structured_value(value):
     try:
         return json.dumps(value, ensure_ascii=False, sort_keys=True)
     except TypeError:
         return str(value).strip()
 
 
-def _empty_correctness(error, test_cases_total):
+def empty_correctness(error, test_cases_total):
     return {
         "test_cases_total": test_cases_total,
         "test_cases_passed": 0,
@@ -287,19 +287,19 @@ def _empty_correctness(error, test_cases_total):
     }
 
 
-def _finalize_syntax_report(report):
+def finalize_syntax_report(report):
     tested = report["stats"]["tested_items"]
     valid = report["stats"]["syntax_valid_items"]
     report["stats"]["syntax_valid_percent"] = round((valid / tested) * 100, 2) if tested else 0.0
 
 
-def _finalize_runtime_report(report):
+def finalize_runtime_report(report):
     tested = report["stats"]["tested_items"]
     valid = report["stats"]["runtime_valid_items"]
     report["stats"]["runtime_valid_percent"] = round((valid / tested) * 100, 2) if tested else 0.0
 
 
-def _finalize_correctness_report(report):
+def finalize_correctness_report(report):
     tested = report["stats"]["tested_items"]
     correct_items = report["stats"]["correct_items"]
     total_cases = report["stats"]["test_cases_total"]

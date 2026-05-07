@@ -6,7 +6,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from json_load import safe_load_json
 from context_builder import format_segment_label
 from llm_client import generate_with_retry
-from lo_clustering import EMBEDDING_MODEL, _embed_batch, _ensure_client, normalize_list_field
+from lo_clustering import EMBEDDING_MODEL, embed_batch, ensure_client, normalize_list_field
 
 TOPIC_EXTRACTION_MODEL = "gemini-2.5-flash-lite"
 TOPIC_MATCH_THRESHOLD = 0.72
@@ -39,14 +39,14 @@ def analyze_topic_coverage(
     if not topics or not los:
         return report
 
-    client = _ensure_client(client)
+    client = ensure_client(client)
 
     topic_texts = [topic["tema"] for topic in topics]
-    lo_texts = [_lo_to_text(lo) for lo in los]
+    lo_texts = [lo_to_text(lo) for lo in los]
 
     try:
-        topic_embeddings = _embed_batch(topic_texts, client, embedding_model)
-        lo_embeddings = _embed_batch(lo_texts, client, embedding_model)
+        topic_embeddings = embed_batch(topic_texts, client, embedding_model)
+        lo_embeddings = embed_batch(lo_texts, client, embedding_model)
     except Exception as e:
         if verbose:
             print(f"Analyza pokrytia tem zlyhala pri embeddingoch: {e}")
@@ -74,7 +74,7 @@ def analyze_topic_coverage(
 
 
 def extract_document_topics(segmenty, client=None, model: str = TOPIC_EXTRACTION_MODEL, verbose: bool = True):
-    source_text = _build_topic_source_text(segmenty)
+    source_text = build_topic_source_text(segmenty)
     if not source_text.strip():
         return []
 
@@ -125,7 +125,7 @@ Materiál:
     return topics
 
 
-def _build_topic_source_text(segmenty):
+def build_topic_source_text(segmenty):
     parts: List[str] = []
     total_len = 0
     for seg in segmenty:
@@ -144,7 +144,7 @@ def _build_topic_source_text(segmenty):
     return "\n\n".join(parts)
 
 
-def _lo_to_text(lo: Dict[str, Any]):
+def lo_to_text(lo: Dict[str, Any]):
     parts = [
         str(lo.get("vzdelávací_objekt", "")).strip(),
         str(lo.get("bloom_level", "")).strip(),

@@ -49,7 +49,7 @@ def analyze_lo_faithfulness(
         comparable_items.append({
             "row": item,
             "lo_id": lo.get("id"),
-            "lo_text": _lo_to_text(lo),
+            "lo_text": lo_to_text(lo),
             "source_text": source_text,
         })
 
@@ -57,7 +57,7 @@ def analyze_lo_faithfulness(
         batch = comparable_items[start:start + batch_size]
         evaluations = {}
         for attempt in range(1, max_batch_attempts + 1):
-            evaluations = _evaluate_lo_faithfulness_batch(
+            evaluations = evaluate_lo_faithfulness_batch(
                 batch,
                 client=client,
                 model=model,
@@ -85,7 +85,7 @@ def analyze_lo_faithfulness(
     return report
 
 
-def _evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True, document_language: str = "sk"):
+def evaluate_lo_faithfulness_batch(batch, client=None, model: str = FAITHFULNESS_MODEL, verbose: bool = True, document_language: str = "sk"):
     parts = []
     for item in batch:
         parts.append(
@@ -155,7 +155,7 @@ Vrat LEN validny JSON ako pole objektov:
     return evaluations
 
 
-def _lo_to_text(lo):
+def lo_to_text(lo):
     parts = [
         f"vzdelavaci_objekt: {lo.get('vzdelávací_objekt', '')}",
         f"bloom_level: {lo.get('bloom_level', '')}",

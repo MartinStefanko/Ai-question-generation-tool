@@ -6,7 +6,7 @@ SUPPORTED_DOCUMENT_LANGUAGES = {"sk", "en"}
 
 
 def detect_document_language(segmenty, client=None, model="gemini-2.5-flash-lite", verbose=True):
-    source_text = _build_full_document_text(segmenty)
+    source_text = build_full_document_text(segmenty)
     if not source_text.strip():
         return {"language": "sk", "reason": "Dokument nema text pre klasifikaciu."}
 
@@ -35,14 +35,14 @@ Document:
     except Exception as e:
         if verbose:
             print(f"Detekcia jazyka dokumentu zlyhala: {e}")
-        return _heuristic_language_fallback(source_text, "Detekcia zlyhala, pouzity heuristicky fallback.")
+        return heuristic_language_fallback(source_text, "Detekcia zlyhala, pouzity heuristicky fallback.")
 
     if not isinstance(parsed, dict):
-        return _heuristic_language_fallback(source_text, "Neplatna odpoved detekcie, pouzity heuristicky fallback.")
+        return heuristic_language_fallback(source_text, "Neplatna odpoved detekcie, pouzity heuristicky fallback.")
 
     language = str(parsed.get("language", "")).strip().lower()
     if language not in SUPPORTED_DOCUMENT_LANGUAGES:
-        return _heuristic_language_fallback(source_text, "Nepodporovany jazyk z detekcie, pouzity heuristicky fallback.")
+        return heuristic_language_fallback(source_text, "Nepodporovany jazyk z detekcie, pouzity heuristicky fallback.")
 
     return {
         "language": language,
@@ -50,7 +50,7 @@ Document:
     }
 
 
-def _heuristic_language_fallback(text, reason_prefix):
+def heuristic_language_fallback(text, reason_prefix):
     lowered = str(text or "").lower()
     sk_tokens = [
         " je ", " a ", " že ", " pre ", " ako ", " ktorý ", " ktoré ", " alebo ",
@@ -69,7 +69,7 @@ def _heuristic_language_fallback(text, reason_prefix):
     }
 
 
-def _build_full_document_text(segmenty, max_chars=12000):
+def build_full_document_text(segmenty, max_chars=12000):
     parts = []
     total = 0
     for seg in segmenty:

@@ -101,7 +101,7 @@ def validate_learning_objects(data, allowed_pages=None):
             )
             item_valid = False
 
-        if not _validate_non_empty_string_or_list(
+        if not validate_non_empty_string_or_list(
             item.get("odporúčané_aktivity"),
             prefix,
             "odporúčané_aktivity",
@@ -109,7 +109,7 @@ def validate_learning_objects(data, allowed_pages=None):
         ):
             item_valid = False
 
-        if not _validate_non_empty_string_or_list(
+        if not validate_non_empty_string_or_list(
             item.get("odporúčané_zadania"),
             prefix,
             "odporúčané_zadania",
@@ -117,10 +117,10 @@ def validate_learning_objects(data, allowed_pages=None):
         ):
             item_valid = False
 
-        if not _validate_sources(item.get("citovane_zdroje"), prefix, report, known_sources):
+        if not validate_sources(item.get("citovane_zdroje"), prefix, report, known_sources):
             item_valid = False
 
-        if not _validate_prerequisites(item.get("prerekvizity"), prefix, report):
+        if not validate_prerequisites(item.get("prerekvizity"), prefix, report):
             item_valid = False
 
         if item_valid:
@@ -158,7 +158,7 @@ def validate_learning_objects(data, allowed_pages=None):
     return report
 
 
-def _validate_non_empty_string_list(value, prefix, field_name, report):
+def validate_non_empty_string_list(value, prefix, field_name, report):
     if not isinstance(value, list):
         report["errors"].append(f"{prefix} ma nespravny typ pola '{field_name}' (ocakavany zoznam).")
         return False
@@ -180,16 +180,16 @@ def _validate_non_empty_string_list(value, prefix, field_name, report):
     return ok
 
 
-def _validate_non_empty_string_or_list(value, prefix, field_name, report):
+def validate_non_empty_string_or_list(value, prefix, field_name, report):
     if isinstance(value, str):
         if not value.strip():
             report["errors"].append(f"{prefix} ma prazdne pole '{field_name}'.")
             return False
         return True
-    return _validate_non_empty_string_list(value, prefix, field_name, report)
+    return validate_non_empty_string_list(value, prefix, field_name, report)
 
 
-def _validate_sources(value, prefix, report, known_sources):
+def validate_sources(value, prefix, report, known_sources):
     if isinstance(value, str):
         if not value.strip():
             report["errors"].append(f"{prefix} ma prazdne pole 'citovane_zdroje'.")
@@ -237,7 +237,7 @@ def _validate_sources(value, prefix, report, known_sources):
     return True
 
 
-def _validate_prerequisites(value, prefix, report):
+def validate_prerequisites(value, prefix, report):
     if not isinstance(value, list):
         report["errors"].append(f"{prefix} ma nespravny typ pola 'prerekvizity' (ocakavany zoznam).")
         return False

@@ -46,14 +46,14 @@ def analyze_item_answerability(
         }
         report["items"].append(row)
 
-        source_text = _build_context_for_item(item, page_map)
+        source_text = build_context_for_item(item, page_map)
         if not source_text.strip():
             continue
 
         comparable_items.append({
             "row": row,
             "item_id": item.get("id"),
-            "question_text": _question_to_text(item),
+            "question_text": question_to_text(item),
             "source_text": source_text,
         })
 
@@ -61,7 +61,7 @@ def analyze_item_answerability(
         batch = comparable_items[start:start + batch_size]
         evaluations = {}
         for attempt in range(1, max_batch_attempts + 1):
-            evaluations = _evaluate_item_answerability_batch(
+            evaluations = evaluate_item_answerability_batch(
                 batch,
                 client=client,
                 model=model,
@@ -96,7 +96,7 @@ def analyze_item_answerability(
     return report
 
 
-def _evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True, document_language: str = "sk"):
+def evaluate_item_answerability_batch(batch, client=None, model: str = ANSWERABILITY_MODEL, verbose: bool = True, document_language: str = "sk"):
     parts = []
     for item in batch:
         parts.append(
@@ -166,9 +166,9 @@ Vrat LEN validny JSON ako pole objektov:
     return evaluations
 
 
-def _question_to_text(item):
+def question_to_text(item):
     return f"otazka: {item.get('otazka', '')}"
 
 
-def _build_context_for_item(item, page_map, max_chars=8000):
+def build_context_for_item(item, page_map, max_chars=8000):
     return build_context_for_sources(item.get("citovane_zdroje", []), page_map, max_chars=max_chars)

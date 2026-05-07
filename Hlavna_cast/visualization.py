@@ -22,7 +22,7 @@ NODE_BORDER_COLOR = "#D0D7E2"
 LAYER_BG_COLOR = "#F3F6FA"
 
 
-def _wrap_name(name, width=22, max_lines=3):
+def wrap_name(name, width=22, max_lines=3):
     lines = textwrap.wrap(name, width=width, break_long_words=False) or ["Bez názvu"]
     if len(lines) > max_lines:
         lines = lines[:max_lines]
@@ -30,7 +30,7 @@ def _wrap_name(name, width=22, max_lines=3):
     return "\n".join(lines)
 
 
-def _build_graph(parsed):
+def build_graph(parsed):
     graph = nx.DiGraph()
     for item in parsed:
         node_id = str(item.get("id")).strip()
@@ -55,7 +55,7 @@ def _build_graph(parsed):
     return graph
 
 
-def _reduce_graph(graph):
+def reduce_graph(graph):
     if nx.is_directed_acyclic_graph(graph):
         reduced = nx.transitive_reduction(graph)
         for node, data in graph.nodes(data=True):
@@ -64,7 +64,7 @@ def _reduce_graph(graph):
     return graph
 
 
-def _assign_layers(graph):
+def assign_layers(graph):
     if nx.is_directed_acyclic_graph(graph):
         generations = list(nx.topological_generations(graph))
         for layer_index, generation in enumerate(generations):
@@ -95,7 +95,7 @@ def _assign_layers(graph):
     return generations
 
 
-def _sort_layer_nodes(graph, layer_nodes, previous_positions):
+def sort_layer_nodes(graph, layer_nodes, previous_positions):
     if not previous_positions:
         return sorted(layer_nodes, key=lambda node: (graph.nodes[node].get("name", ""), str(node)))
 
@@ -109,8 +109,8 @@ def _sort_layer_nodes(graph, layer_nodes, previous_positions):
     return sorted(layer_nodes, key=lambda node: (barycenter(node), graph.nodes[node].get("name", ""), str(node)))
 
 
-def _compute_layout(graph, layer_gap, node_gap):
-    generations = _assign_layers(graph)
+def compute_layout(graph, layer_gap, node_gap):
+    generations = assign_layers(graph)
     layer_map = {}
     for node, data in graph.nodes(data=True):
         layer = data.get("layer", 0)
@@ -124,7 +124,7 @@ def _compute_layout(graph, layer_gap, node_gap):
     max_layer_size = max((len(nodes) for nodes in layer_map.values()), default=1)
 
     for layer in sorted(layer_map):
-        nodes = _sort_layer_nodes(graph, layer_map[layer], previous_positions)
+        nodes = sort_layer_nodes(graph, layer_map[layer], previous_positions)
         count = len(nodes)
         offset = (max_layer_size - count) / 2
         for index, node in enumerate(nodes):
@@ -136,13 +136,13 @@ def _compute_layout(graph, layer_gap, node_gap):
     return positions, len(layer_map), max_layer_size
 
 
-def _figure_size(node_count, layer_count, max_layer_size):
+def figure_size(node_count, layer_count, max_layer_size):
     width = max(15, min(34, 6 + layer_count * 4.2))
     height = max(8, min(24, 3.5 + max_layer_size * 2.2))
     return width, height
 
 
-def _draw_nodes(ax, graph, positions):
+def draw_nodes(ax, graph, positions):
     for node, (x, y) in positions.items():
         data = graph.nodes[node]
         bloom = data.get("bloom", "")
@@ -150,7 +150,7 @@ def _draw_nodes(ax, graph, positions):
         name = data.get("name", "")
 
         title = f"LO {node}"
-        wrapped_name = _wrap_name(name, width=18, max_lines=2)
+        wrapped_name = wrap_name(name, width=18, max_lines=2)
         label_lines = [title, wrapped_name]
         if bloom:
             label_lines.append(bloom)
@@ -175,7 +175,7 @@ def _draw_nodes(ax, graph, positions):
         )
 
 
-def _draw_legend(ax, graph):
+def draw_legend(ax, graph):
     used_levels = []
     for _, data in graph.nodes(data=True):
         bloom = data.get("bloom", "")
@@ -208,7 +208,7 @@ def _draw_legend(ax, graph):
     )
 
 
-def _draw_layer_guides(ax, layer_count, max_layer_size, layer_gap, node_gap):
+def draw_layer_guides(ax, layer_count, max_layer_size, layer_gap, node_gap):
     for layer_index in range(layer_count):
         x_center = layer_index * layer_gap
         rect = plt.Rectangle(
@@ -233,7 +233,7 @@ def _draw_layer_guides(ax, layer_count, max_layer_size, layer_gap, node_gap):
 
 
 def visualize_to_png(parsed, out_png_path, layer_gap=9.5, node_gap=6.5):
-    graph = _reduce_graph(_build_graph(parsed))
+    graph = reduce_graph(build_graph(parsed))
     if graph.number_of_nodes() == 0:
         fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
         ax.axis("off")
@@ -242,13 +242,13 @@ def visualize_to_png(parsed, out_png_path, layer_gap=9.5, node_gap=6.5):
         plt.close(fig)
         return
 
-    positions, layer_count, max_layer_size = _compute_layout(graph, layer_gap=layer_gap, node_gap=node_gap)
-    fig_w, fig_h = _figure_size(graph.number_of_nodes(), layer_count, max_layer_size)
+    positions, layer_count, max_layer_size = compute_layout(graph, layer_gap=layer_gap, node_gap=node_gap)
+    fig_w, fig_h = figure_size(graph.number_of_nodes(), layer_count, max_layer_size)
 
     fig, ax = plt.subplots(figsize=(fig_w, fig_h), dpi=220)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("#FBFCFE")
-    _draw_layer_guides(ax, layer_count, max_layer_size, layer_gap, node_gap)
+    draw_layer_guides(ax, layer_count, max_layer_size, layer_gap, node_gap)
 
     nx.draw_networkx_edges(
         graph,
@@ -265,8 +265,8 @@ def visualize_to_png(parsed, out_png_path, layer_gap=9.5, node_gap=6.5):
         min_target_margin=28,
     )
 
-    _draw_nodes(ax, graph, positions)
-    _draw_legend(ax, graph)
+    draw_nodes(ax, graph, positions)
+    draw_legend(ax, graph)
 
     ax.set_title(
         "Vzdelávacie objekty a prerekvizity",

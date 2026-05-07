@@ -94,13 +94,13 @@ def validate_items(data, allowed_pages=None, valid_lo_ids=None):
             )
             item_valid = False
 
-        if not _validate_non_empty_text(item.get("otazka"), prefix, "otazka", report):
+        if not validate_non_empty_text(item.get("otazka"), prefix, "otazka", report):
             item_valid = False
-        if not _validate_non_empty_value(item.get("odpoved"), prefix, "odpoved", report):
+        if not validate_non_empty_value(item.get("odpoved"), prefix, "odpoved", report):
             item_valid = False
-        if not _validate_non_empty_value(item.get("napoveda"), prefix, "napoveda", report):
+        if not validate_non_empty_value(item.get("napoveda"), prefix, "napoveda", report):
             item_valid = False
-        if not _validate_sources(item.get("citovane_zdroje"), prefix, report, known_sources):
+        if not validate_sources(item.get("citovane_zdroje"), prefix, report, known_sources):
             item_valid = False
 
         if item_valid:
@@ -118,7 +118,7 @@ def validate_items(data, allowed_pages=None, valid_lo_ids=None):
     return report
 
 
-def _validate_non_empty_text(value, prefix, field_name, report):
+def validate_non_empty_text(value, prefix, field_name, report):
     if not isinstance(value, str):
         report["errors"].append(f"{prefix} ma nespravny typ pola '{field_name}' (ocakavany string).")
         return False
@@ -128,7 +128,7 @@ def _validate_non_empty_text(value, prefix, field_name, report):
     return True
 
 
-def _validate_non_empty_value(value, prefix, field_name, report):
+def validate_non_empty_value(value, prefix, field_name, report):
     if value is None:
         report["errors"].append(f"{prefix} ma prazdne pole '{field_name}'.")
         return False
@@ -149,7 +149,7 @@ def _validate_non_empty_value(value, prefix, field_name, report):
     return True
 
 
-def _validate_sources(value, prefix, report, known_sources):
+def validate_sources(value, prefix, report, known_sources):
     if not isinstance(value, list):
         report["errors"].append(f"{prefix} ma nespravny typ pola 'citovane_zdroje' (ocakavany zoznam).")
         return False

@@ -60,7 +60,7 @@ def format_source_pages_for_ui(value):
     return ", ".join(pages)
 
 
-def _read_download_bytes(path):
+def read_download_bytes(path):
     if not path or not os.path.exists(path):
         return None
     with open(path, "rb") as f:
@@ -68,7 +68,7 @@ def _read_download_bytes(path):
 
 
 def render_download_button(label, path, mime, key):
-    data = _read_download_bytes(path)
+    data = read_download_bytes(path)
     if data is None:
         return
     st.download_button(

@@ -47,11 +47,11 @@ def build_page_map(segmenty):
             source_id = get_segment_source_id(seg)
             source_ref = make_source_ref(source_id, page)
             page_key = int(page)
-            page_map[source_ref] = _append_page_text(page_map.get(source_ref, ""), text)
-            page_map[(source_id, page_key)] = _append_page_text(page_map.get((source_id, page_key), ""), text)
+            page_map[source_ref] = append_page_text(page_map.get(source_ref, ""), text)
+            page_map[(source_id, page_key)] = append_page_text(page_map.get((source_id, page_key), ""), text)
 
             if allow_page_number_fallback:
-                page_map[page_key] = _append_page_text(page_map.get(page_key, ""), text)
+                page_map[page_key] = append_page_text(page_map.get(page_key, ""), text)
     return page_map
 
 
@@ -196,7 +196,7 @@ def build_context_for_lo(lo, page_map, max_chars=8000):
     return build_context_for_sources(lo.get("citovane_zdroje", []), page_map, max_chars=max_chars)
 
 
-def _append_page_text(existing, new_text):
+def append_page_text(existing, new_text):
     new_text = str(new_text or "").strip()
     if not new_text:
         return str(existing or "").strip()

@@ -5,12 +5,12 @@ from context_builder import format_segment_label, make_source_ref
 from visualization import visualize_to_png
 
 
-def _write_json(path, data):
+def write_json(path, data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _to_text(value):
+def to_text(value):
     if value is None:
         return ""
     if isinstance(value, list):
@@ -18,7 +18,7 @@ def _to_text(value):
     return str(value).strip()
 
 
-def _normalize_list(value):
+def normalize_list(value):
     if value is None:
         return []
     if isinstance(value, list):
@@ -31,20 +31,20 @@ def _normalize_list(value):
     return [text] if text else []
 
 
-def _normalize_lo_for_export(obj):
+def normalize_lo_for_export(obj):
     return {
         "id": obj.get("id"),
         "vzdelavaci_objekt": obj.get("vzdelávací_objekt", obj.get("vzdelavaci_objekt", "")),
         "bloom_level": obj.get("bloom_level", ""),
-        "odporucane_aktivity": _normalize_list(
+        "odporucane_aktivity": normalize_list(
             obj.get("odporúčané_aktivity", obj.get("odporucane_aktivity", []))
         ),
         "odporucane_zadania": obj.get("odporúčané_zadania", obj.get("odporucane_zadania", "")),
-        "citovane_zdroje": _normalize_list(
+        "citovane_zdroje": normalize_list(
             obj.get("citovane_zdroje", obj.get("citované_zdroje", []))
         ),
-        "zdroj": _normalize_list(obj.get("zdroj", [])),
-        "prerekvizity": _normalize_list(obj.get("prerekvizity", [])),
+        "zdroj": normalize_list(obj.get("zdroj", [])),
+        "prerekvizity": normalize_list(obj.get("prerekvizity", [])),
     }
 
 
@@ -52,13 +52,13 @@ def save_learning_objects_json_txt(los, output_dir, all_los=None):
     os.makedirs(output_dir, exist_ok=True)
 
     out_path = os.path.join(output_dir, "learning_objects.json")
-    export_los = [_normalize_lo_for_export(obj) for obj in los]
-    _write_json(out_path, export_los)
+    export_los = [normalize_lo_for_export(obj) for obj in los]
+    write_json(out_path, export_los)
 
     if all_los is not None:
         all_out_path = os.path.join(output_dir, "learning_objects_all.json")
-        export_all_los = [_normalize_lo_for_export(obj) for obj in all_los]
-        _write_json(all_out_path, export_all_los)
+        export_all_los = [normalize_lo_for_export(obj) for obj in all_los]
+        write_json(all_out_path, export_all_los)
 
     lines = []
     for obj in los:
@@ -79,7 +79,7 @@ def save_learning_objects_json_txt(los, output_dir, all_los=None):
         else:
             prereq_str = "" if prereq is None else str(prereq)
         lines.append(f"prerekvizity: {prereq_str}")
-        lines.append(f"zdroj: {_to_text(obj.get('zdroj'))}")
+        lines.append(f"zdroj: {to_text(obj.get('zdroj'))}")
 
         cit = obj.get("citovane_zdroje", [])
         if isinstance(cit, list):
@@ -175,16 +175,16 @@ def save_learning_objects_pdf(los, output_dir):
 
     for lo in los:
         lo_id = lo.get("id", "-")
-        lo_name = _to_text(lo.get("vzdelávací_objekt")) or "-"
+        lo_name = to_text(lo.get("vzdelávací_objekt")) or "-"
         story.append(Paragraph(f"LO {lo_id} | {lo_name}", heading_style))
 
         rows = [
-            ("Bloom level", _to_text(lo.get("bloom_level")) or "-"),
-            ("Odporúčané aktivity", _to_text(lo.get("odporúčané_aktivity")) or "-"),
-            ("Odporúčané zadania", _to_text(lo.get("odporúčané_zadania")) or "-"),
-            ("Prerekvizity", _to_text(lo.get("prerekvizity")) or "-"),
-            ("Zdroj", _to_text(lo.get("zdroj")) or "-"),
-            ("Citované zdroje", _to_text(lo.get("citovane_zdroje")) or "-"),
+            ("Bloom level", to_text(lo.get("bloom_level")) or "-"),
+            ("Odporúčané aktivity", to_text(lo.get("odporúčané_aktivity")) or "-"),
+            ("Odporúčané zadania", to_text(lo.get("odporúčané_zadania")) or "-"),
+            ("Prerekvizity", to_text(lo.get("prerekvizity")) or "-"),
+            ("Zdroj", to_text(lo.get("zdroj")) or "-"),
+            ("Citované zdroje", to_text(lo.get("citovane_zdroje")) or "-"),
         ]
 
         for label, value in rows:
@@ -644,11 +644,11 @@ def save_questions_json_txt(items, output_dir, all_items=None):
     os.makedirs(output_dir, exist_ok=True)
 
     items_json_path = os.path.join(output_dir, "questions.json")
-    _write_json(items_json_path, items)
+    write_json(items_json_path, items)
 
     if all_items is not None:
         all_items_json_path = os.path.join(output_dir, "questions_all.json")
-        _write_json(all_items_json_path, all_items)
+        write_json(all_items_json_path, all_items)
 
     items_txt_lines = []
     for it in items:
@@ -664,7 +664,7 @@ def save_questions_json_txt(items, output_dir, all_items=None):
         items_txt_lines.append(f"kod_riesenia: {it.get('kod_riesenia', '')}")
         items_txt_lines.append(f"test_cases: {it.get('test_cases', [])}")
         items_txt_lines.append(f"napoveda: {it.get('napoveda')}")
-        items_txt_lines.append(f"zdroj: {_to_text(it.get('zdroj'))}")
+        items_txt_lines.append(f"zdroj: {to_text(it.get('zdroj'))}")
         hodnotenie = it.get("hodnotenie", {})
         if isinstance(hodnotenie, dict):
             skore = hodnotenie.get("skore")
@@ -768,33 +768,33 @@ def save_questions_pdf(items, output_dir):
     for item in items:
         item_id = item.get("id", "-")
         lo_id = item.get("lo_id", "-")
-        typ = _to_text(item.get("typ")) or "-"
+        typ = to_text(item.get("typ")) or "-"
         heading = f"Položka {item_id} | LO {lo_id} | {typ}"
         story.append(Paragraph(heading, heading_style))
 
         rows = [
-            ("Otázka", _to_text(item.get("otazka")) or "-"),
-            ("Odpoveď", _to_text(item.get("odpoved")) or "-"),
-            ("Nápoveda", _to_text(item.get("napoveda")) or "-"),
-            ("Zdroj", _to_text(item.get("zdroj")) or "-"),
-            ("Citované zdroje", _to_text(item.get("citovane_zdroje")) or "-"),
+            ("Otázka", to_text(item.get("otazka")) or "-"),
+            ("Odpoveď", to_text(item.get("odpoved")) or "-"),
+            ("Nápoveda", to_text(item.get("napoveda")) or "-"),
+            ("Zdroj", to_text(item.get("zdroj")) or "-"),
+            ("Citované zdroje", to_text(item.get("citovane_zdroje")) or "-"),
         ]
 
-        jazyk = _to_text(item.get("jazyk"))
+        jazyk = to_text(item.get("jazyk"))
         if jazyk:
             rows.append(("Jazyk", jazyk))
 
-        kod_riesenia = _to_text(item.get("kod_riesenia"))
+        kod_riesenia = to_text(item.get("kod_riesenia"))
         if kod_riesenia:
             rows.append(("Kód riešenia", kod_riesenia.replace("\n", "<br/>")))
 
         hodnotenie = item.get("hodnotenie", {})
         if isinstance(hodnotenie, dict):
             skore = hodnotenie.get("skore")
-            zdovodnenie = _to_text(hodnotenie.get("zdovodnenie"))
+            zdovodnenie = to_text(hodnotenie.get("zdovodnenie"))
         else:
             skore = item.get("hodnotenie_skore")
-            zdovodnenie = _to_text(item.get("hodnotenie_zdovodnenie"))
+            zdovodnenie = to_text(item.get("hodnotenie_zdovodnenie"))
 
         if skore is not None:
             rows.append(("Hodnotenie", str(skore)))

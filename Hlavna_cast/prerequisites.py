@@ -10,7 +10,7 @@ def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, ver
     groups = {}
     source_signature_by_id = {}
     for obj in lo_list:
-        signature = _get_source_signature(obj)
+        signature = get_source_signature(obj)
         source_signature_by_id[obj.get("id")] = signature
         groups.setdefault(signature, []).append(obj)
 
@@ -20,7 +20,7 @@ def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, ver
             for obj in group:
                 mapping[obj.get("id")] = []
             continue
-        group_mapping = _infer_prerequisites_for_group(
+        group_mapping = infer_prerequisites_for_group(
             group,
             signature=signature,
             model=model,
@@ -45,7 +45,7 @@ def infer_prerequisites(lo_list, model="gemini-2.5-flash-lite", client=None, ver
     return lo_list
 
 
-def _infer_prerequisites_for_group(group, signature, model="gemini-2.5-flash-lite", client=None, verbose=True, document_language="sk"):
+def infer_prerequisites_for_group(group, signature, model="gemini-2.5-flash-lite", client=None, verbose=True, document_language="sk"):
     summary_lines = []
     for obj in group:
         acts = obj.get("odporúčané_aktivity", [])
@@ -116,7 +116,7 @@ Zoznam cielov:
     return mapping
 
 
-def _get_source_signature(lo):
+def get_source_signature(lo):
     source_ids = {
         source_id
         for source_id, _ in parse_source_refs(lo.get("citovane_zdroje", []))

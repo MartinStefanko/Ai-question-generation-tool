@@ -12,7 +12,7 @@ REQUIRE_SOURCE_OVERLAP = False
 EMBEDDING_MODEL = "gemini-embedding-001"
 
 
-def _ensure_client(client: Optional[genai.Client] = None) -> genai.Client:
+def ensure_client(client: Optional[genai.Client] = None) -> genai.Client:
     if client is not None:
         return client
     api_key = os.getenv("GEMINI_API_KEY")
@@ -42,7 +42,7 @@ def normalize_sources(val) -> set:
     return set(cleaned)
 
 
-def _embed_batch(texts: List[str], client: genai.Client, model: str) -> List[List[float]]:
+def embed_batch(texts: List[str], client: genai.Client, model: str) -> List[List[float]]:
     if not texts:
         return []
     MAX_BATCH = 100
@@ -78,7 +78,7 @@ def cluster_by_core(
     if len(lo_list) < 2:
         return lo_list
 
-    client = _ensure_client(client)
+    client = ensure_client(client)
 
     bloom_groups: Dict[str, List[Dict[str, Any]]] = {}
     for obj in lo_list:
@@ -101,7 +101,7 @@ def cluster_by_core(
             texts.append(" ".join(text_parts))
 
         try:
-            embeddings = _embed_batch(texts, client, embedding_model)
+            embeddings = embed_batch(texts, client, embedding_model)
         except Exception as e:
             print(f"[{bloom}] Zlyhalo získanie embeddingov: {e}")
             return lo_list

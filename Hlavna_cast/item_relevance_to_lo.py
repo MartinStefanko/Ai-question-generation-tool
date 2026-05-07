@@ -3,7 +3,7 @@ from typing import Any, Dict, List
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from lo_clustering import EMBEDDING_MODEL, _embed_batch, _ensure_client, normalize_list_field
+from lo_clustering import EMBEDDING_MODEL, embed_batch, ensure_client, normalize_list_field
 
 
 def analyze_item_relevance_to_lo(
@@ -44,8 +44,8 @@ def analyze_item_relevance_to_lo(
         if lo is None:
             continue
 
-        item_text = _item_to_text(item)
-        lo_text = _lo_to_text(lo)
+        item_text = item_to_text(item)
+        lo_text = lo_to_text(lo)
         if not item_text.strip() or not lo_text.strip():
             continue
 
@@ -56,11 +56,11 @@ def analyze_item_relevance_to_lo(
     if not comparable_items:
         return report
 
-    client = _ensure_client(client)
+    client = ensure_client(client)
 
     try:
-        item_embeddings = _embed_batch([row["item_text"] for row in comparable_items], client, embedding_model)
-        lo_embeddings = _embed_batch([row["lo_text"] for row in comparable_items], client, embedding_model)
+        item_embeddings = embed_batch([row["item_text"] for row in comparable_items], client, embedding_model)
+        lo_embeddings = embed_batch([row["lo_text"] for row in comparable_items], client, embedding_model)
     except Exception as e:
         if verbose:
             print(f"Analyza relevance polozky k LO zlyhala pri embeddingoch: {e}")
@@ -85,7 +85,7 @@ def analyze_item_relevance_to_lo(
     return report
 
 
-def _item_to_text(item: Dict[str, Any]):
+def item_to_text(item: Dict[str, Any]):
     parts = [
         str(item.get("typ", "")).strip(),
         str(item.get("otazka", "")).strip(),
@@ -95,7 +95,7 @@ def _item_to_text(item: Dict[str, Any]):
     return " ".join(part for part in parts if part)
 
 
-def _lo_to_text(lo: Dict[str, Any]):
+def lo_to_text(lo: Dict[str, Any]):
     parts = [
         str(lo.get("vzdelávací_objekt", "")).strip(),
         str(lo.get("bloom_level", "")).strip(),

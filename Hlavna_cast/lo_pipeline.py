@@ -22,13 +22,13 @@ from topic_coverage import analyze_topic_coverage
 LO_MIN_FAITHFULNESS_SCORE = 3
 
 
-def _lo_page_sort_key(lo):
+def lo_page_sort_key(lo):
     refs = parse_source_refs(lo.get("citovane_zdroje", []))
     source_id, first_page = refs[0] if refs else ("", float("inf"))
     return (source_id or "", first_page, lo.get("id", float("inf")))
 
 
-def _attach_source_names(los, source_name_map):
+def attach_source_names(los, source_name_map):
     for lo in los:
         lo["zdroj"] = resolve_source_names(lo.get("citovane_zdroje", []), source_name_map)
     return los
@@ -65,7 +65,7 @@ def generate_lo_pipeline(
         verbose=verbose,
         document_language=document_language,
     )
-    _attach_source_names(los, source_name_map)
+    attach_source_names(los, source_name_map)
     generation_seconds = time.perf_counter() - generation_start
     evaluation_seconds = 0.0
     timing_report = {
@@ -111,7 +111,7 @@ def generate_lo_pipeline(
 
     generation_start = time.perf_counter()
     los = cluster_by_core(los)
-    los.sort(key=_lo_page_sort_key)
+    los.sort(key=lo_page_sort_key)
     for i, obj in enumerate(los, start=1):
         obj["id"] = i
 
@@ -122,7 +122,7 @@ def generate_lo_pipeline(
         verbose=verbose,
         document_language=document_language,
     )
-    _attach_source_names(los, source_name_map)
+    attach_source_names(los, source_name_map)
     generation_seconds += time.perf_counter() - generation_start
 
     allowed_pages = build_allowed_source_refs(segmenty)
@@ -148,9 +148,9 @@ def generate_lo_pipeline(
         batch_size=batch_size,
         document_language=document_language,
     )
-    accepted_los = _filter_learning_objects_variant_b(los, validation_report, faithfulness_report)
-    normalized_los, lo_id_map = _normalize_learning_object_ids(accepted_los)
-    _attach_source_names(normalized_los, source_name_map)
+    accepted_los = filter_learning_objects_variant_b(los, validation_report, faithfulness_report)
+    normalized_los, lo_id_map = normalize_learning_object_ids(accepted_los)
+    attach_source_names(normalized_los, source_name_map)
     if output_dir:
         save_lo_validation_report(validation_report, output_dir)
         save_document_topics_txt(coverage_report.get("topics", []), output_dir)
@@ -193,8 +193,8 @@ def generate_lo_pipeline(
     return normalized_los
 
 
-def _filter_learning_objects_variant_b(los, validation_report, faithfulness_report):
-    invalid_lo_ids = _extract_prefixed_ids(validation_report.get("errors", []), "LO")
+def filter_learning_objects_variant_b(los, validation_report, faithfulness_report):
+    invalid_lo_ids = extract_prefixed_ids(validation_report.get("errors", []), "LO")
     faithfulness_by_id = {
         row.get("lo_id"): row.get("faithfulness_score")
         for row in faithfulness_report.get("items", [])
@@ -215,7 +215,7 @@ def _filter_learning_objects_variant_b(los, validation_report, faithfulness_repo
     return accepted
 
 
-def _normalize_learning_object_ids(los):
+def normalize_learning_object_ids(los):
     normalized = []
     lo_id_map = {}
 
@@ -238,7 +238,7 @@ def _normalize_learning_object_ids(los):
     return normalized, lo_id_map
 
 
-def _extract_prefixed_ids(errors, prefix):
+def extract_prefixed_ids(errors, prefix):
     ids = set()
     pattern = re.compile(rf"{re.escape(prefix)}\s+(\d+)")
     for error in errors:

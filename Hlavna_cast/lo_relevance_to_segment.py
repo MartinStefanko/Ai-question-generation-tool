@@ -4,7 +4,7 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from context_builder import build_context_for_lo, build_page_map
-from lo_clustering import EMBEDDING_MODEL, _embed_batch, _ensure_client, normalize_list_field
+from lo_clustering import EMBEDDING_MODEL, embed_batch, ensure_client, normalize_list_field
 
 
 def analyze_lo_relevance_to_segment(
@@ -30,7 +30,7 @@ def analyze_lo_relevance_to_segment(
     comparable_items: List[Dict[str, Any]] = []
 
     for lo in los:
-        lo_text = _lo_to_text(lo)
+        lo_text = lo_to_text(lo)
         source_text = build_context_for_lo(lo, page_map, max_chars=8000)
 
         item = {
@@ -53,11 +53,11 @@ def analyze_lo_relevance_to_segment(
     if not comparable_items:
         return report
 
-    client = _ensure_client(client)
+    client = ensure_client(client)
 
     try:
-        lo_embeddings = _embed_batch([item["lo_text"] for item in comparable_items], client, embedding_model)
-        source_embeddings = _embed_batch([item["source_text"] for item in comparable_items], client, embedding_model)
+        lo_embeddings = embed_batch([item["lo_text"] for item in comparable_items], client, embedding_model)
+        source_embeddings = embed_batch([item["source_text"] for item in comparable_items], client, embedding_model)
     except Exception as e:
         if verbose:
             print(f"Analyza LO vs zdrojovy segment zlyhala pri embeddingoch: {e}")
@@ -82,7 +82,7 @@ def analyze_lo_relevance_to_segment(
     return report
 
 
-def _lo_to_text(lo: Dict[str, Any]):
+def lo_to_text(lo: Dict[str, Any]):
     parts = [
         str(lo.get("vzdelávací_objekt", "")).strip(),
         str(lo.get("bloom_level", "")).strip(),
