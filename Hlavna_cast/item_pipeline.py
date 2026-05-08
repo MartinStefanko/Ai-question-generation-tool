@@ -32,7 +32,6 @@ from python_code_eval import evaluate_python_code_items
 ITEM_MIN_SCORE = 3
 ITEM_MIN_ANSWERABILITY_SCORE = 3
 ITEM_MIN_FAITHFULNESS_SCORE = 3
-PYTHON_MIN_TEST_PASS_RATE_PERCENT = 80.0
 ITEM_DOCUMENT_CLASSIFICATION_MAX_CHARS = 12000
 
 
@@ -819,8 +818,7 @@ def filter_items_variant_b(
             passed = correctness_row.get("test_cases_passed", 0)
             if total <= 0:
                 continue
-            pass_rate = (passed / total) * 100
-            if pass_rate < PYTHON_MIN_TEST_PASS_RATE_PERCENT:
+            if passed <= 0:
                 continue
 
         accepted.append(item)
