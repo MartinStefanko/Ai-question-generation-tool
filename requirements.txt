@@ -10,7 +10,7 @@ easyocr
 numpy
 opencv-python
 scikit-learn
-streamlit
+streamlit==1.56.0
 reportlab
 
 #pip install -r requirements.txt

@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import base64
 import tempfile
 import os
 import re
@@ -365,6 +365,7 @@ with tab_viz:
         else:
             st.caption("Myšlienková mapa LO. Klik na uzol rozbalí nadväzujúce vzdelávacie objekty. Klik znovu ich zbalí.")
    
-            components.html(html, height=760, scrolling=False)
+            iframe_src = "data:text/html;charset=utf-8;base64," + base64.b64encode(html.encode("utf-8")).decode("ascii")
+            st.iframe(iframe_src, height=760)
     
     
